@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: appointment_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Calendar Booking Service
+  calendar-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.calendar
+    environment:
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/appointment_db
+      DEBUG: "true"
+      SECRET_KEY: "dev-secret-key"
+      GOOGLE_CREDENTIALS_PATH: "/app/appointment-service-484808-b285efa3864f.json"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./appointment-service-484808-b285efa3864f.json:/app/appointment-service-484808-b285efa3864f.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Chatbot Service
+  chatbot-service:
+    build:
+      context: ./chatbot-service
+      dockerfile: Dockerfile
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CALENDAR_SERVICE_URL: http://calendar-service:8000
+      CALENDAR_SERVICE_API_KEY: dev-api-key
+      DEBUG: "true"
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8001:8001"
+    depends_on:
+      - calendar-service
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis for session storage (optional)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./chatbot-frontend
+      dockerfile: Dockerfile
+    environment:
+      REACT_APP_API_URL: http://localhost:8001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - chatbot-service
+    volumes:
+      - ./chatbot-frontend/src:/app/src
+      - ./chatbot-frontend/public:/app/public
+
+volumes:
+  postgres_data:
+  redis_data:
