@@ -65,7 +65,7 @@ check_service() {
 }
 
 # Check each service
-check_service "Calendar Service" "http://localhost:8005/health"
+check_service "Calendar Service" "http://localhost:8000/health"
 check_service "Chatbot Service" "http://localhost:8001/api/v1/health/"
 check_service "Frontend" "http://localhost:3000"
 
@@ -74,7 +74,7 @@ echo "🎉 All services are running!"
 echo ""
 echo "📋 Service URLs:"
 echo "   • Chatbot UI:     http://localhost:3000"
-echo "   • Calendar API:   http://localhost:8005/docs"
+echo "   • Calendar API:   http://localhost:8000/docs"
 echo "   • Chatbot API:    http://localhost:8001/docs"
 echo ""
 echo "🛠️  Useful commands:"

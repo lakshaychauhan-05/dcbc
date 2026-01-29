@@ -29,16 +29,16 @@ def check_calendar_service():
     except Exception as e:
         print(f"⚠️  Could not read .env file: {e}")
     
-    # Check if service is running on port 8005
+    # Check if service is running on port 8000
     try:
-        response = httpx.get("http://localhost:8005/health", timeout=5.0)
+        response = httpx.get("http://localhost:8000/health", timeout=5.0)
         if response.status_code == 200:
-            print("✅ Calendar service is running on port 8005")
+            print("✅ Calendar service is running on port 8000")
             return True
         else:
             print(f"⚠️  Calendar service responded with status {response.status_code}")
     except httpx.ConnectError:
-        print("❌ Calendar service is not running on port 8005")
+        print("❌ Calendar service is not running on port 8000")
         print("   Start it with: python run.py")
         return False
     except Exception as e:
@@ -87,7 +87,7 @@ def check_api_connection():
     chatbot_running = False
     
     try:
-        response = httpx.get("http://localhost:8005/health", timeout=5.0)
+        response = httpx.get("http://localhost:8000/health", timeout=5.0)
         calendar_running = response.status_code == 200
     except:
         pass
@@ -103,7 +103,7 @@ def check_api_connection():
         print("⚠️  To test API connection, ensure:")
         print("   1. Calendar service .env has: SERVICE_API_KEY=dev-api-key")
         print("   2. Chatbot service .env has: CALENDAR_SERVICE_API_KEY=dev-api-key")
-        print("   3. Chatbot service .env has: CALENDAR_SERVICE_URL=http://localhost:8005")
+        print("   3. Chatbot service .env has: CALENDAR_SERVICE_URL=http://localhost:8000")
         return True
     else:
         print("❌ One or both services are not running")
@@ -133,7 +133,7 @@ def main():
         print("   SERVICE_API_KEY=dev-api-key")
         print("   (and other required variables)")
         print("\n2. chatbot-service/.env should have:")
-        print("   CALENDAR_SERVICE_URL=http://localhost:8005")
+        print("   CALENDAR_SERVICE_URL=http://localhost:8000")
         print("   CALENDAR_SERVICE_API_KEY=dev-api-key")
         print("   OPENAI_API_KEY=your_openai_key")
     

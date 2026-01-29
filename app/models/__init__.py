@@ -7,6 +7,8 @@ from app.models.doctor_leave import DoctorLeave
 from app.models.calendar_watch import CalendarWatch
 from app.models.calendar_sync_job import CalendarSyncJob
 from app.models.idempotency_key import IdempotencyKey
+from app.models.doctor_account import DoctorAccount
+from app.models.clinic import Clinic
 
 __all__ = [
     "Doctor",
@@ -17,4 +19,6 @@ __all__ = [
     "CalendarWatch",
     "CalendarSyncJob",
     "IdempotencyKey",
+    "DoctorAccount",
+    "Clinic",
 ]

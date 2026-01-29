@@ -32,14 +32,46 @@ $processes += [pscustomobject]@{ Name = "frontend"; Id = $frontend.Id; Command =
 
 Start-Sleep -Seconds 1
 
-$api = Start-Terminal -Title "Calendar API" -WorkingDirectory $root -Command "python run.py"
-$processes += [pscustomobject]@{ Name = "calendar-api"; Id = $api.Id; Command = "python run.py"; WorkingDirectory = $root }
+$apiCmd = if (Test-Path "$root\venv\Scripts\python.exe") { ".\venv\Scripts\python.exe run.py" } else { "python run.py" }
+$api = Start-Terminal -Title "Calendar API" -WorkingDirectory $root -Command $apiCmd
+$processes += [pscustomobject]@{ Name = "calendar-api"; Id = $api.Id; Command = $apiCmd; WorkingDirectory = $root }
 
 Start-Sleep -Seconds 1
 
 $chatbotDir = Join-Path $root "chatbot-service"
-$chatbot = Start-Terminal -Title "Calendar Chatbot" -WorkingDirectory $chatbotDir -Command "python run_chatbot.py"
-$processes += [pscustomobject]@{ Name = "chatbot"; Id = $chatbot.Id; Command = "python run_chatbot.py"; WorkingDirectory = $chatbotDir }
+$chatbotCmd = if (Test-Path "$root\venv\Scripts\python.exe") { "..\venv\Scripts\python.exe run_chatbot.py" } else { "python run_chatbot.py" }
+$chatbot = Start-Terminal -Title "Calendar Chatbot" -WorkingDirectory $chatbotDir -Command $chatbotCmd
+$processes += [pscustomobject]@{ Name = "chatbot"; Id = $chatbot.Id; Command = $chatbotCmd; WorkingDirectory = $chatbotDir }
+
+Start-Sleep -Seconds 1
+
+# Admin portal backend (FastAPI, port 5050)
+$adminBackendCmd = if (Test-Path "$root\venv\Scripts\python.exe") { ".\venv\Scripts\python.exe run_admin_portal.py" } else { "python run_admin_portal.py" }
+$adminBackend = Start-Terminal -Title "Admin Portal API" -WorkingDirectory $root -Command $adminBackendCmd
+$processes += [pscustomobject]@{ Name = "admin-portal-api"; Id = $adminBackend.Id; Command = $adminBackendCmd; WorkingDirectory = $root }
+
+Start-Sleep -Seconds 1
+
+# Doctor portal backend (FastAPI, port 5000)
+$doctorBackendCmd = if (Test-Path "$root\venv\Scripts\python.exe") { ".\venv\Scripts\python.exe run_doctor_portal.py" } else { "python run_doctor_portal.py" }
+$doctorBackend = Start-Terminal -Title "Doctor Portal API" -WorkingDirectory $root -Command $doctorBackendCmd
+$processes += [pscustomobject]@{ Name = "doctor-portal-api"; Id = $doctorBackend.Id; Command = $doctorBackendCmd; WorkingDirectory = $root }
+
+Start-Sleep -Seconds 1
+
+# Admin portal frontend (Vite, port 5500)
+$adminFrontendDir = Join-Path $root "admin-portal-frontend"
+$adminFrontendCmd = "npm run dev -- --host --port 5500"
+$adminFrontend = Start-Terminal -Title "Admin Portal UI" -WorkingDirectory $adminFrontendDir -Command $adminFrontendCmd
+$processes += [pscustomobject]@{ Name = "admin-portal-ui"; Id = $adminFrontend.Id; Command = $adminFrontendCmd; WorkingDirectory = $adminFrontendDir }
+
+Start-Sleep -Seconds 1
+
+# Doctor portal frontend (Vite, port 5173)
+$doctorFrontendDir = Join-Path $root "doctor-portal-frontend"
+$doctorFrontendCmd = "npm run dev -- --host --port 5173"
+$doctorFrontend = Start-Terminal -Title "Doctor Portal UI" -WorkingDirectory $doctorFrontendDir -Command $doctorFrontendCmd
+$processes += [pscustomobject]@{ Name = "doctor-portal-ui"; Id = $doctorFrontend.Id; Command = $doctorFrontendCmd; WorkingDirectory = $doctorFrontendDir }
 
 $processes | ConvertTo-Json -Depth 2 | Set-Content -Path $stateFile -Encoding UTF8
 

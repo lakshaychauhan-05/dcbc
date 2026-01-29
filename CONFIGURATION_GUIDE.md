@@ -4,7 +4,7 @@
 This document outlines the required configuration for all services to work together.
 
 ## Service Ports
-- **Calendar Service**: Port 8005 (configured in `run.py`)
+- **Calendar Service**: Port 8000 (configured in `run.py`)
 - **Chatbot Service**: Port 8001 (configured in `chatbot-service/app/core/config.py`)
 - **Frontend**: Port 3000/3001 (React app)
 
@@ -19,7 +19,7 @@ DATABASE_URL=postgresql://user:password@localhost:5432/calendar_booking_db
 SERVICE_API_KEY=dev-api-key
 GOOGLE_CALENDAR_CREDENTIALS_PATH=./appointment-service-484808-b285efa3864f.json
 GOOGLE_CALENDAR_DELEGATED_ADMIN_EMAIL=admin@yourdomain.com
-WEBHOOK_BASE_URL=http://localhost:8005
+WEBHOOK_BASE_URL=http://localhost:8000
 GOOGLE_CALENDAR_WEBHOOK_SECRET=your-webhook-secret
 DEBUG=true
 ```
@@ -32,7 +32,7 @@ Location: `c:\Lakshay\Calender-booking\chatbot-service\.env`
 Required variables:
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
-CALENDAR_SERVICE_URL=http://localhost:8005
+CALENDAR_SERVICE_URL=http://localhost:8000
 CALENDAR_SERVICE_API_KEY=dev-api-key
 DEBUG=true
 HOST=0.0.0.0
@@ -40,7 +40,7 @@ PORT=8001
 ```
 
 **IMPORTANT**: 
-- `CALENDAR_SERVICE_URL` must point to port 8005
+- `CALENDAR_SERVICE_URL` must point to port 8000
 - `CALENDAR_SERVICE_API_KEY` must match the calendar service's `SERVICE_API_KEY`
 
 ## Fixed Issues
@@ -51,8 +51,8 @@ PORT=8001
 - **File**: `chatbot-service/app/services/calendar_client.py`
 
 ### ✅ Fixed Port Configuration
-- **Before**: `http://localhost:8000`
-- **After**: `http://localhost:8005`
+- **Before**: `http://localhost:8005`
+- **After**: `http://localhost:8000`
 - **Files**: 
   - `chatbot-service/app/core/config.py`
   - `chatbot-service/env.example`
@@ -65,7 +65,7 @@ PORT=8001
 
 1. **Check Calendar Service**:
    ```bash
-   curl http://localhost:8005/health
+   curl http://localhost:8000/health
    ```
 
 2. **Check Chatbot Service**:
@@ -75,7 +75,7 @@ PORT=8001
 
 3. **Test API Connection** (requires API key):
    ```bash
-   curl -H "X-API-Key: dev-api-key" http://localhost:8005/api/v1/appointments/doctors/export
+   curl -H "X-API-Key: dev-api-key" http://localhost:8000/api/v1/appointments/doctors/export
    ```
 
 4. **Run Verification Script**:
@@ -111,7 +111,7 @@ npm start
 - Check that the `X-API-Key` header is being sent (check logs)
 
 ### Connection Errors
-- Verify calendar service is running on port 8005
+- Verify calendar service is running on port 8000
 - Check firewall settings
 - Verify `CALENDAR_SERVICE_URL` is correct in chatbot `.env`
 

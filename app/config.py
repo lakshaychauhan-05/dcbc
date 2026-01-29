@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     WEBHOOK_BASE_URL: str  # Public base URL for webhooks (e.g., https://yourdomain.com)
     GOOGLE_CALENDAR_WEBHOOK_SECRET: str  # Secret token for webhook verification
     
+    # Local/degraded mode controls
+    DISABLE_CALENDAR_WORKERS: bool = False  # Skip starting calendar sync/watch/reconcile
+    ALLOW_START_WITHOUT_API_KEY: bool = False  # Only for local/dev; never enable in prod
+
     # RAG Service
     RAG_SERVICE_URL: Optional[str] = None
     RAG_SERVICE_API_KEY: Optional[str] = None

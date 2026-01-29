@@ -1,337 +1,144 @@
-# Calendar & Appointment Booking Microservice
+# Calendar Booking Platform
 
-A production-ready Calendar & Appointment Booking microservice built with FastAPI, PostgreSQL, SQLAlchemy, Alembic, and Google Calendar integration.
+Multi-service calendar booking system with Google Calendar sync, admin/doctor portals, and an AI chatbot for scheduling assistance.
 
-## Architecture Overview
-
-### Critical Architecture Rules
-
-1. **Database is the SINGLE SOURCE OF TRUTH**
-   - All availability calculations come from the database
-   - All booking logic relies on database state
-   - Google Calendar is only a mirror of confirmed appointments
-
-2. **Google Calendar Integration**
-   - Google Calendar events are created/updated ONLY AFTER DB transaction succeeds
-   - Never read availability from Google Calendar
-   - Never trust Google Calendar for booking logic
-   - Each doctor has their own Google Calendar email ID
-
-3. **RAG Integration**
-   - RAG is strictly READ-ONLY
-   - Stores ONLY descriptive doctor data (name, specialization, experience, etc.)
-   - Never stores schedule, slots, availability, or appointments
-   - Used only for answering patient questions and doctor discovery
-
-4. **Multi-Doctor Support**
-   - Multiple doctors exist under a single clinic
-   - Each doctor has independent working hours and schedules
-
-## Tech Stack
-
-- **Python 3.11**
-- **FastAPI** - Modern, fast web framework
-- **PostgreSQL** - Relational database
-- **SQLAlchemy** - ORM for database operations
-- **Alembic** - Database migrations
-- **Google Calendar API** - Calendar event synchronization
-- **python-dotenv** - Environment variable management
-
-## Project Structure
-
+## Repository Layout
 ```
-calendar-service/
-│
-├── app/
-│   ├── main.py                 # FastAPI application entry point
-│   ├── config.py               # Configuration management
-│   ├── database.py             # Database connection and session
-│   ├── security.py             # API key authentication
-│   │
-│   ├── models/                 # SQLAlchemy models
-│   │   ├── doctor.py
-│   │   ├── patient.py
-│   │   ├── patient_history.py
-│   │   ├── appointment.py
-│   │   └── doctor_leave.py
-│   │
-│   ├── schemas/                # Pydantic schemas
-│   │   ├── doctor.py
-│   │   ├── patient.py
-│   │   └── appointment.py
-│   │
-│   ├── services/               # Business logic services
-│   │   ├── availability_service.py
-│   │   ├── booking_service.py
-│   │   ├── google_calendar_service.py
-│   │   └── rag_sync_service.py
-│   │
-│   └── routes/                 # API routes
-│       ├── doctor.py
-│       ├── patient.py
-│       └── appointment.py
-│
-├── alembic/                    # Database migrations
-├── .env.example                # Environment variables template
-├── requirements.txt            # Python dependencies
-└── README.md                   # This file
+.
+├── app/                     # Core Calendar API (FastAPI)
+│   ├── models/, schemas/, services/, routes/
+│   └── run.py               # Entry for calendar service
+├── admin_portal/            # Admin portal API (FastAPI)
+├── doctor_portal/           # Doctor portal API (FastAPI)
+├── chatbot-service/         # Chatbot API (FastAPI + LLM)
+│   └── run_chatbot.py
+├── admin-portal-frontend/   # Admin UI (Vite + React, port 5500)
+├── doctor-portal-frontend/  # Doctor UI (Vite + React, port 5173)
+├── chatbot-frontend/        # Chatbot UI (CRA, port 3000)
+├── alembic/                 # DB migrations
+├── env.example              # Root env template (shared backends)
+├── docker-compose.yml       # Optional containerized stack
+├── start_project.ps1        # Windows launcher (all services)
+├── start_all_services.sh    # Docker Compose launcher
+└── tests/                   # Pytest suite
 ```
 
-## Database Models
+## Services & Default Ports
+- Calendar API (core): `run.py` → 8000
+- Doctor Portal API: `run_doctor_portal.py` → 5000
+- Admin Portal API: `run_admin_portal.py` → 5050
+- Chatbot API: `chatbot-service/run_chatbot.py` → defaults to 8002 (Docker publishes 8001)
+- Frontends: chatbot UI 3000, doctor UI 5173, admin UI 5500
 
-### Doctor
-- `id` (UUID, primary key)
-- `clinic_id` (UUID)
-- `name` (String)
-- `email` (String, unique) - Google Calendar email
-- `specialization` (String)
-- `experience_years` (Integer)
-- `languages` (Array)
-- `consultation_type` (String)
-- `general_working_days_text` (String) - For RAG
-- `working_days` (JSON) - e.g., ["monday", "tuesday"]
-- `working_hours` (JSON) - {"start": "09:00", "end": "17:00"}
-- `slot_duration_minutes` (Integer)
-- `is_active` (Boolean)
-- `created_at`, `updated_at` (DateTime)
+## Prerequisites
+- Python 3.11+
+- Node.js 18+ and npm
+- PostgreSQL 14+ (local) or Docker
+- Google Cloud service account for Calendar API
 
-### Patient
-- `id` (UUID, primary key)
-- `name` (String)
-- `mobile_number` (String, unique, indexed)
-- `email` (String, optional)
-- `gender` (String, optional)
-- `date_of_birth` (Date, optional)
-- `created_at` (DateTime)
+## Environment Configuration
+1) Backends: copy `env.example` → `.env` and fill:
+- `DATABASE_URL`, `SERVICE_API_KEY`, `GOOGLE_CALENDAR_*`, `WEBHOOK_BASE_URL`
+- Portal auth: `DOCTOR_PORTAL_*`, `ADMIN_PORTAL_*`, `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`
+- Upstream URLs: `CORE_API_BASE`, `PORTAL_API_BASE`
 
-### PatientHistory
-- `id` (UUID, primary key)
-- `patient_id` (UUID, foreign key)
-- `symptoms` (Text)
-- `medical_conditions` (Array)
-- `allergies` (Array)
-- `notes` (Text)
-- `created_at` (DateTime)
+2) Frontends:
+- `admin-portal-frontend/.env.example` → `.env` (`VITE_ADMIN_API_URL`)
+- `doctor-portal-frontend/.env.example` → `.env` (`VITE_PORTAL_API_URL`)
 
-### Appointment
-- `id` (UUID, primary key)
-- `doctor_id` (UUID, foreign key)
-- `patient_id` (UUID, foreign key)
-- `date` (Date)
-- `start_time` (Time)
-- `end_time` (Time)
-- `status` (Enum: BOOKED, CANCELLED, RESCHEDULED)
-- `google_calendar_event_id` (String, optional)
-- `source` (Enum: AI_CALLING_AGENT, ADMIN)
-- `created_at` (DateTime)
+3) Chatbot service:
+- `chatbot-service/env.example` → `.env` (set `OPENAI_API_KEY`, `CALENDAR_SERVICE_API_KEY`, `PORT`)
 
-### DoctorLeave
-- `id` (UUID, primary key)
-- `doctor_id` (UUID, foreign key)
-- `date` (Date)
-- `reason` (String, optional)
-
-## Setup Instructions
-
-### 1. Clone the Repository
-
+## Install Dependencies
 ```bash
-git clone <repository-url>
-cd calendar-service
-```
-
-### 2. Create Virtual Environment
-
-```bash
+# Python (root services)
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-### 3. Install Dependencies
-
-```bash
+.\venv\Scripts\activate           # Windows
 pip install -r requirements.txt
+
+# Chatbot API
+cd chatbot-service
+pip install -r requirements.txt
+
+# Frontends
+cd admin-portal-frontend  && npm install
+cd ../doctor-portal-frontend && npm install
+cd ../chatbot-frontend && npm install
 ```
 
-### 4. Configure Environment Variables
-
-Copy `env.example` to `.env` and update the values:
-
+## Database
 ```bash
-# On Linux/Mac
-cp env.example .env
-
-# On Windows
-copy env.example .env
-```
-
-Edit `.env` with your configuration:
-- `DATABASE_URL` - PostgreSQL connection string
-- `SERVICE_API_KEY` - Secret API key for service authentication
-- `GOOGLE_CALENDAR_CREDENTIALS_PATH` - Path to Google service account JSON
-- `GOOGLE_CALENDAR_DELEGATED_ADMIN_EMAIL` - Admin email for domain-wide delegation
-- `RAG_SERVICE_URL` - RAG service URL (optional)
-- `RAG_SERVICE_API_KEY` - RAG service API key (optional)
-
-### 5. Set Up Google Calendar API
-
-1. Create a Google Cloud Project
-2. Enable Google Calendar API
-3. Create a Service Account
-4. Download service account JSON credentials
-5. Enable domain-wide delegation for the service account
-6. Place the JSON file at the path specified in `GOOGLE_CALENDAR_CREDENTIALS_PATH`
-
-### 6. Set Up Database
-
-Create a PostgreSQL database:
-
-```bash
+# Create database
 createdb calendar_booking_db
-```
-
-### 7. Run Migrations
-
-```bash
-# Create initial migration
-alembic revision --autogenerate -m "Initial migration"
 
 # Apply migrations
 alembic upgrade head
 ```
 
-### 8. Run the Application
-
+## Running Locally (manual)
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# Core calendar API
+python run.py
+
+# Admin portal API
+python run_admin_portal.py
+
+# Doctor portal API
+python run_doctor_portal.py
+
+# Chatbot API
+cd chatbot-service && python run_chatbot.py
+```
+Frontends (in their folders):
+```bash
+npm run dev -- --host --port 5500   # admin UI
+npm run dev -- --host --port 5173   # doctor UI
+npm start                            # chatbot UI (CRA)
+```
+Windows convenience launcher (starts all backends + frontends in separate terminals):
+```bash
+pwsh ./start_project.ps1
 ```
 
-The API will be available at:
-- API: http://localhost:8000
-- Swagger Docs: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+## Docker Compose
+```bash
+cp chatbot-service/env.example chatbot-service/.env   # add OPENAI_API_KEY
+docker-compose up --build -d
+```
+Exposes: calendar API 8000, chatbot API 8001, chatbot UI 3000, Postgres 5432, Redis 6379.
 
-## API Endpoints
-
-### Doctor Management
-
-- `POST /api/v1/doctors/` - Create doctor
-- `GET /api/v1/doctors/{doctor_id}` - Get doctor by ID
-- `GET /api/v1/doctors/` - List doctors (with filters)
-- `PUT /api/v1/doctors/{doctor_id}` - Update doctor
-- `POST /api/v1/doctors/{doctor_id}/leaves` - Add doctor leave
-- `DELETE /api/v1/doctors/{doctor_id}/leaves/{leave_id}` - Delete doctor leave
-
-### Patient Management
-
-- `POST /api/v1/patients/` - Create patient
-- `GET /api/v1/patients/{patient_id}` - Get patient by ID
-- `GET /api/v1/patients/mobile/{mobile_number}` - Get patient by mobile
-- `PUT /api/v1/patients/{patient_id}` - Update patient
-- `POST /api/v1/patients/{patient_id}/history` - Add patient history
-- `GET /api/v1/patients/{patient_id}/history` - Get patient history
-
-### Appointment Management
-
-- `GET /api/v1/appointments/availability/{doctor_id}` - Get available slots
-- `POST /api/v1/appointments/` - Book appointment
-- `GET /api/v1/appointments/{appointment_id}` - Get appointment
-- `GET /api/v1/appointments/doctor/{doctor_id}` - Get doctor appointments
-- `GET /api/v1/appointments/patient/{patient_id}` - Get patient appointments
-- `PUT /api/v1/appointments/{appointment_id}/reschedule` - Reschedule appointment
-- `DELETE /api/v1/appointments/{appointment_id}` - Cancel appointment
+## API Docs & Health
+- Calendar API: `http://localhost:8000/docs` (health: `/health`)
+- Admin Portal API: `http://localhost:5050/docs`
+- Doctor Portal API: `http://localhost:5000/docs`
+- Chatbot API: `http://localhost:{PORT}/docs`
 
 ## Authentication
+- Calendar API: `X-API-Key` header (`SERVICE_API_KEY` / `SERVICE_API_KEYS`)
+- Portals: JWT-based auth with secrets in `.env`; Google OAuth configured via `DOCTOR_PORTAL_OAUTH_*`
+- Webhooks: `GOOGLE_CALENDAR_WEBHOOK_SECRET` used to verify inbound calls
 
-All endpoints require API key authentication via the `X-API-Key` header:
+## Google Calendar Notes
+- Database is the source of truth; Calendar is mirrored after DB commits.
+- Webhooks require a public HTTPS `WEBHOOK_BASE_URL`.
+- Each doctor owns a distinct Google Calendar; credentials live at `GOOGLE_CALENDAR_CREDENTIALS_PATH`.
 
+## Data & Sample Utilities
+- `create_database.py` / `check_db.py` / `populate_sample_data.py` / `export_doctor_data.py`
+- `run_migrations.py` to apply Alembic migrations programmatically.
+
+## Testing
 ```bash
-curl -H "X-API-Key: your-secret-api-key" http://localhost:8000/api/v1/doctors/
+pytest                   # unit tests
+python test_integration.py
+```
+Frontends:
+```bash
+cd chatbot-frontend && npm test
 ```
 
-## Key Features
-
-### Availability Calculation
-
-- Calculates available slots based on:
-  - Doctor working hours (from database)
-  - Slot duration (from database)
-  - Booked appointments (from database)
-  - Doctor leaves (from database)
-- Never reads from Google Calendar
-
-### Appointment Booking
-
-- Validates slot availability from database
-- Creates patient if not exists (based on mobile number)
-- Uses database transactions with row-level locking to prevent double booking
-- Creates Google Calendar event AFTER database commit succeeds
-- Stores Google Calendar event ID for future updates
-
-### Rescheduling
-
-- Validates new slot availability
-- Updates appointment in database transaction
-- Updates Google Calendar event accordingly
-
-### Cancellation
-
-- Marks appointment as cancelled in database
-- Deletes Google Calendar event
-
-### RAG Sync
-
-- Automatically syncs doctor descriptive data to RAG service
-- Only sends allowed fields (name, specialization, experience, etc.)
-- Never sends schedule, slots, or availability data
-- Triggered on doctor create/update
-
-## Error Handling
-
-The service includes comprehensive error handling:
-- Validation errors return 400 Bad Request
-- Not found errors return 404 Not Found
-- Authentication errors return 401 Unauthorized
-- Server errors return 500 Internal Server Error
-- All errors are logged for debugging
-
-## Database Transactions
-
-- All booking operations use database transactions
-- Row-level locking prevents double booking
-- Google Calendar operations happen AFTER database commit
-- Rollback on any database errors
-
-## Logging
-
-The service uses Python's logging module. Configure logging levels in your environment or application configuration.
-
-## Production Considerations
-
-1. **Security**
-   - Use strong API keys
-   - Enable HTTPS
-   - Configure CORS appropriately
-   - Use environment variables for secrets
-
-2. **Database**
-   - Use connection pooling
-   - Set up database backups
-   - Monitor database performance
-
-3. **Google Calendar**
-   - Handle API rate limits
-   - Implement retry logic for failed calendar operations
-   - Monitor calendar sync status
-
-4. **Monitoring**
-   - Set up application monitoring
-   - Monitor API response times
-   - Track error rates
-   - Monitor database performance
-
-5. **Scaling**
-   - Use load balancer for multiple instances
-   - Configure database read replicas if needed
-   - Implement caching for frequently accessed data
-
+## Production Tips
+- Use HTTPS, rotate API keys, and set strict CORS.
+- Configure connection pooling and backups for PostgreSQL.
+- Monitor calendar sync workers (`CALENDAR_SYNC_*`, `CALENDAR_RECONCILE_*`) and webhook health.
+- Set `DEBUG=False` and provide strong `ADMIN_PASSWORD_HASH`/JWT secrets before deploying.

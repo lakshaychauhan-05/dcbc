@@ -22,7 +22,7 @@ class Doctor(Base):
     # Email as primary key (unique identifier)
     email = Column(String(255), primary_key=True, index=True)  # Primary key and unique identifier
 
-    clinic_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String(255), nullable=False)
     specialization = Column(String(255), nullable=False)
     experience_years = Column(Integer, nullable=False)
@@ -38,6 +38,7 @@ class Doctor(Base):
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     
     # Relationships
+    clinic = relationship("Clinic", back_populates="doctors")
     appointments = relationship("Appointment", back_populates="doctor", cascade="all, delete-orphan")
     leaves = relationship("DoctorLeave", back_populates="doctor", cascade="all, delete-orphan")
     

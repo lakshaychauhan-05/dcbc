@@ -51,10 +51,27 @@ python run.py
 uvicorn app.main:app --reload
 ```
 
+### 4b. Run Doctor Portal (separate service)
+
+```bash
+# Start the doctor portal on port 5000
+python run_doctor_portal.py
+```
+
+### 4c. Run Doctor Portal Frontend (Vite, port 5173)
+
+```bash
+cd doctor-portal-frontend
+npm install
+npm run dev -- --host --port 5173
+```
+
 ### 5. Access API Documentation
 
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
+- Doctor Portal docs: http://localhost:5000/docs
+- Doctor Portal UI: http://localhost:5173
 
 ## Testing the API
 
@@ -78,6 +95,33 @@ curl -X POST "http://localhost:8000/api/v1/doctors/" \
     "slot_duration_minutes": 30
   }'
 ```
+
+### Create a Doctor Portal Account (requires X-API-Key)
+
+```bash
+curl -X POST "http://localhost:5000/portal/auth/register" \
+  -H "X-API-Key: your-secret-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "dr.john@example.com",
+    "password": "StrongPassword123!"
+  }'
+```
+
+### Login to Doctor Portal
+
+```bash
+curl -X POST "http://localhost:5000/portal/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "dr.john@example.com",
+    "password": "StrongPassword123!"
+  }'
+```
+
+### OAuth (Google) Sign-in
+- Configure these in `.env`: `DOCTOR_PORTAL_OAUTH_CLIENT_ID`, `DOCTOR_PORTAL_OAUTH_CLIENT_SECRET`, `DOCTOR_PORTAL_OAUTH_REDIRECT_URI`, and `DOCTOR_PORTAL_FRONTEND_CALLBACK_URL` (e.g., `http://localhost:5173/oauth/callback`).
+- Start the backend (5000) and frontend (5173), then click "Continue with Google" on the login page.
 
 ### Check Availability
 

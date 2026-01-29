@@ -140,5 +140,5 @@ async def test_webhook():
     return {
         "status": "ok",
         "message": "Webhook endpoint is accessible",
-        "webhook_url": f"http://localhost:8005/api/v1/webhooks/google-calendar"
+        "webhook_url": f"http://localhost:8000/api/v1/webhooks/google-calendar"
     }

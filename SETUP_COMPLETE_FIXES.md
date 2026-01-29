@@ -12,8 +12,8 @@
 - `chatbot-service/app/core/config.py`
 - `chatbot-service/env.example`
 
-- **Changed**: `http://localhost:8000` → `http://localhost:8005`
-- **Reason**: Calendar service runs on port 8005 (as configured in `run.py`)
+- **Changed**: `http://localhost:8005` → `http://localhost:8000`
+- **Reason**: Calendar service now runs on port 8000 (as configured in `run.py`)
 
 ### 3. Improved Error Handling
 **File**: `chatbot-service/app/services/calendar_client.py`
@@ -36,7 +36,7 @@ DATABASE_URL=postgresql://user:password@localhost:5432/calendar_booking_db
 
 ### Chatbot Service `.env`
 ```env
-CALENDAR_SERVICE_URL=http://localhost:8005
+CALENDAR_SERVICE_URL=http://localhost:8000
 CALENDAR_SERVICE_API_KEY=dev-api-key
 OPENAI_API_KEY=your_openai_api_key_here
 # ... other variables
@@ -53,7 +53,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 cd c:\Lakshay\Calender-booking
 python run.py
 ```
-Runs on: http://localhost:8005
+Runs on: http://localhost:8000
 
 **Terminal 2 - Chatbot Service:**
 ```bash
@@ -78,7 +78,7 @@ docker-compose up --build
 
 ### 1. Check Calendar Service
 ```bash
-curl http://localhost:8005/health
+curl http://localhost:8000/health
 ```
 
 ### 2. Check Chatbot Service
@@ -88,7 +88,7 @@ curl http://localhost:8001/api/v1/health/
 
 ### 3. Test API Connection
 ```bash
-curl -H "X-API-Key: dev-api-key" http://localhost:8005/api/v1/appointments/doctors/export
+curl -H "X-API-Key: dev-api-key" http://localhost:8000/api/v1/appointments/doctors/export
 ```
 
 ### 4. Run Verification Script
@@ -104,8 +104,8 @@ python verify_config.py
 - ⚠️ **Action Required**: Ensure API keys match in both `.env` files
 
 ### Connection Errors
-- Verify calendar service is running on port 8005
-- Check `CALENDAR_SERVICE_URL` in chatbot `.env` is `http://localhost:8005`
+- Verify calendar service is running on port 8000
+- Check `CALENDAR_SERVICE_URL` in chatbot `.env` is `http://localhost:8000`
 - Verify API key is `dev-api-key` in both services
 
 ### Database Errors
@@ -120,7 +120,7 @@ Frontend (3000)
     ↓
 Chatbot Service (8001)
     ↓ [X-API-Key: dev-api-key]
-Calendar Service (8005)
+Calendar Service (8000)
     ↓
 PostgreSQL Database
 ```

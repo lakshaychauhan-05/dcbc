@@ -21,6 +21,8 @@ from app.models.patient_history import PatientHistory
 from app.models.appointment import Appointment
 from app.models.doctor_leave import DoctorLeave
 from app.models.calendar_watch import CalendarWatch
+from app.models.doctor_account import DoctorAccount
+from app.models.clinic import Clinic
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

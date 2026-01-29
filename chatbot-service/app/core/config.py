@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     OPENAI_MAX_TOKENS: int = 1000
 
     # Calendar Service
-    CALENDAR_SERVICE_URL: str = "http://localhost:8005"
+    CALENDAR_SERVICE_URL: str = "http://localhost:8000"
     CALENDAR_SERVICE_API_KEY: str = "dev-api-key"
 
     # Redis (optional, for conversation state)
