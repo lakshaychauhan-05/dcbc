@@ -119,10 +119,18 @@ async def book_appointment(
             db=db,
             booking_data=appointment_data
         )
-        response_payload = AppointmentResponse.model_validate(appointment).model_dump()
+        # Serialize appointment for response
+        appointment_model = AppointmentResponse.model_validate(appointment)
+        
+        # For idempotency storage, use JSON-serializable format
         if idempotency_key:
+            import json
+            # model_dump_json() returns JSON string with dates serialized
+            json_str = appointment_model.model_dump_json()
+            response_payload = json.loads(json_str)  # Parse back to dict with strings
             idempotency_service.complete(db, record, response_payload, status.HTTP_201_CREATED)
-        return response_payload
+            
+        return appointment_model
     except ValueError as e:
         db.rollback()
         if record:
@@ -418,10 +426,15 @@ async def reschedule_appointment(
             appointment_id=appointment_id,
             reschedule_data=reschedule_data
         )
-        response_payload = AppointmentResponse.model_validate(appointment).model_dump()
+        appointment_model = AppointmentResponse.model_validate(appointment)
+        
         if idempotency_key:
+            import json
+            json_str = appointment_model.model_dump_json()
+            response_payload = json.loads(json_str)
             idempotency_service.complete(db, record, response_payload, status.HTTP_200_OK)
-        return response_payload
+            
+        return appointment_model
     except ValueError as e:
         db.rollback()
         if record:
@@ -495,10 +508,15 @@ async def cancel_appointment(
             db=db,
             appointment_id=appointment_id
         )
-        response_payload = AppointmentResponse.model_validate(appointment).model_dump()
+        appointment_model = AppointmentResponse.model_validate(appointment)
+        
         if idempotency_key:
+            import json
+            json_str = appointment_model.model_dump_json()
+            response_payload = json.loads(json_str)
             idempotency_service.complete(db, record, response_payload, status.HTTP_200_OK)
-        return response_payload
+            
+        return appointment_model
     except ValueError as e:
         db.rollback()
         if record:

@@ -532,14 +532,8 @@ class ChatService:
                     )
 
         if doctor_name:
-            # Find specific doctor
-            doctor = next(
-                (
-                    d for d in doctor_data
-                    if doctor_name.lower() in (d.get("name") or "").lower()
-                ),
-                None
-            )
+            # Find specific doctor - use flexible matching
+            doctor = self._find_doctor_by_name(doctor_name, doctor_data)
             if doctor:
                 self.conversation_manager.update_conversation(
                     conversation_id=conversation_id,
@@ -860,40 +854,66 @@ class ChatService:
         return missing
 
     def _prompt_for_missing_info(self, missing_info: List[str], booking_context: Dict[str, Any]) -> str:
-        """Ask for the next missing piece of booking info with context."""
+        """Ask for the next missing piece of booking info with context - optimized for natural flow."""
         if not missing_info:
             return "What details would you like to provide?"
 
+        # Group related fields for natural conversation flow
+        if len(missing_info) >= 2:
+            # Ask for name and phone together
+            if "your name" in missing_info and "your phone number" in missing_info:
+                doctor_text = ""
+                if booking_context.get("doctor_name"):
+                    doctor_text = f" with {self._format_doctor_name(booking_context.get('doctor_name'))}"
+                elif booking_context.get("specialization"):
+                    doctor_text = f" for {booking_context.get('specialization')}"
+                    
+                date_time_text = ""
+                if booking_context.get("date") and booking_context.get("time"):
+                    date_time_text = f" on {booking_context.get('date')} at {booking_context.get('time')}"
+                elif booking_context.get("date"):
+                    date_time_text = f" on {booking_context.get('date')}"
+                    
+                return f"Great! I just need your name and phone number to book the appointment{doctor_text}{date_time_text}."
+            
+            # Ask for date and time together
+            if "the appointment date" in missing_info and "the appointment time" in missing_info:
+                doctor_text = ""
+                if booking_context.get("doctor_name"):
+                    doctor_text = f" with {self._format_doctor_name(booking_context.get('doctor_name'))}"
+                elif booking_context.get("specialization"):
+                    doctor_text = f" for {booking_context.get('specialization')}"
+                    
+                return f"What date and time would work for you{doctor_text}?"
+
+        # Single field prompts
         primary = missing_info[0]
-        known_parts = []
-
+        
+        # Build context summary
+        context_parts = []
         if booking_context.get("doctor_name"):
-            known_parts.append(f"doctor: {self._format_doctor_name(booking_context.get('doctor_name'))}")
+            context_parts.append(f"{self._format_doctor_name(booking_context.get('doctor_name'))}")
         elif booking_context.get("specialization"):
-            known_parts.append(f"specialty: {booking_context.get('specialization')}")
+            context_parts.append(f"{booking_context.get('specialization')}")
         if booking_context.get("date"):
-            known_parts.append(f"date: {booking_context.get('date')}")
+            context_parts.append(f"{booking_context.get('date')}")
         if booking_context.get("time"):
-            known_parts.append(f"time: {booking_context.get('time')}")
-        if booking_context.get("patient_name"):
-            known_parts.append(f"name: {booking_context.get('patient_name')}")
-        if booking_context.get("patient_phone"):
-            known_parts.append(f"phone: {booking_context.get('patient_phone')}")
+            context_parts.append(f"{booking_context.get('time')}")
 
-        known_text = f"I have {', '.join(known_parts)}. " if known_parts else ""
+        context_text = f"for {' on '.join(context_parts)}" if context_parts else ""
 
         if primary == "the doctor or specialization":
-            return f"{known_text}Which doctor or specialty would you like to book?"
+            return "Which doctor or specialty would you like to book?"
         if primary == "the appointment date":
-            return f"{known_text}What date should I book the appointment for?"
+            return f"What date should I book the appointment {context_text}?"
         if primary == "the appointment time":
-            return f"{known_text}What time should I book the appointment for?"
+            return f"What time works for you{' on ' + booking_context.get('date') if booking_context.get('date') else ''}?"
         if primary == "your name":
-            return f"{known_text}May I have your name?"
+            return f"May I have your name{' ' + context_text if context_text else ''}?"
         if primary == "your phone number":
-            return f"{known_text}May I have your phone number?"
+            return f"And your phone number{' ' + context_text if context_text else ''}?"
 
-        return f"{known_text}Please provide {primary}."
+        return f"Please provide {primary}."
 
     def _get_existing_booking_context(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Get persisted booking context fields only."""
@@ -1114,18 +1134,67 @@ class ChatService:
         if not booking_context.get("doctor_email"):
             return "I couldn't determine the doctor. Please specify a doctor or specialization."
 
-        # Prepare confirmation
+        # Check availability before confirming
+        doctor_email_to_check = booking_context.get("doctor_email")
+        date_to_check = self._parse_date(booking_context.get("date"))
+        time_to_check = self._parse_time(booking_context.get("time"))
+        
+        if doctor_email_to_check and date_to_check and time_to_check:
+            try:
+                async with CalendarClient() as calendar_client:
+                    availability = await calendar_client.get_doctor_availability(doctor_email_to_check, date_to_check)
+                    available_slots = availability.get("available_slots", [])
+                    
+                    # Check if requested time is in available slots
+                    requested_time_str = time_to_check.strftime("%H:%M")
+                    # Also try with seconds for comparison
+                    requested_time_full = time_to_check.strftime("%H:%M:%S")
+                    
+                    # Log for debugging
+                    logger.info(f"Checking availability: requested={requested_time_full}, available_slots={[s.get('start_time') for s in available_slots[:3]]}")
+                    
+                    is_available = any(
+                        slot.get("start_time") in [requested_time_str, requested_time_full] or
+                        slot.get("start_time", "").startswith(requested_time_str)
+                        for slot in available_slots
+                    )
+                    
+                    logger.info(f"Availability check result: {is_available}")
+                    
+                    if not is_available and available_slots:
+                        slots_text = ", ".join([slot.get("start_time", "") for slot in available_slots[:5]])
+                        return (
+                            f"I'm sorry, {self._format_doctor_name(booking_context.get('doctor_name'))} is not available at "
+                            f"{booking_context.get('time')} on {booking_context.get('date')}. "
+                            f"Available times: {slots_text}. Which time would you prefer?"
+                        )
+                    elif not available_slots:
+                        return (
+                            f"{self._format_doctor_name(booking_context.get('doctor_name'))} has no availability on "
+                            f"{booking_context.get('date')}. Would you like to try a different date?"
+                        )
+            except Exception as e:
+                logger.warning(f"Couldn't check availability: {e}")
+                # Continue with booking if availability check fails
+
+        # Prepare confirmation with better formatting
         self.conversation_manager.update_conversation(
             conversation_id=conversation_id,
             state=ConversationState.CONFIRMING_BOOKING,
             context={"pending_action": "book"}
         )
 
+        doctor_display = self._format_doctor_name(booking_context.get('doctor_name'))
+        specialization = booking_context.get('specialization', 'specialist')
+        
         return (
-            "Please confirm: I will book an appointment on "
-            f"{booking_context.get('date')} at {booking_context.get('time')} "
-            f"with {booking_context.get('doctor_name') or booking_context.get('specialization')}. "
-            "Reply with 'yes' to proceed or 'no' to cancel."
+            f"Perfect! Let me confirm your appointment:\n\n"
+            f"📅 Date: {booking_context.get('date')}\n"
+            f"⏰ Time: {booking_context.get('time')}\n"
+            f"👨‍⚕️ Doctor: {doctor_display} ({specialization})\n"
+            f"👤 Patient: {booking_context.get('patient_name')}\n"
+            f"📞 Phone: {booking_context.get('patient_phone')}\n\n"
+            f"Reply 'yes' to confirm or 'no' to cancel."
         )
 
     def _needs_doctor_data(self, intent: IntentType) -> bool:
@@ -1535,8 +1604,22 @@ class ChatService:
         if not value:
             return None
         try:
-            return date_parser.parse(value, fuzzy=True).date()
-        except Exception:
+            parsed_date = date_parser.parse(value, fuzzy=True).date()
+            # If parsed date is in the past and no year was specified, assume next year
+            today = date.today()
+            if parsed_date < today and parsed_date.year == today.year:
+                # Check if user said "tomorrow" or similar
+                if any(word in value.lower() for word in ["tomorrow", "next"]):
+                    parsed_date = date_parser.parse(value, fuzzy=True, default=datetime.now()).date()
+                else:
+                    # Try parsing with next year
+                    try:
+                        parsed_date = date_parser.parse(value, fuzzy=True, default=datetime(today.year + 1, 1, 1)).date()
+                    except:
+                        pass
+            return parsed_date
+        except Exception as e:
+            logger.warning(f"Failed to parse date '{value}': {e}")
             return None
 
     def _parse_time(self, value: Optional[str]) -> Optional[dt_time]:
@@ -1613,27 +1696,53 @@ class ChatService:
 
         try:
             async with CalendarClient() as calendar_client:
+                # Build payload with explicit string conversion to avoid serialization errors
                 booking_payload = {
-                    "doctor_email": doctor_email,
-                    "doctor_name": booking_context.get("doctor_name"),
-                    "patient_mobile_number": booking_context.get("patient_phone"),
-                    "patient_name": booking_context.get("patient_name"),
-                    "patient_email": booking_context.get("patient_email"),
-                    "date": booking_date.isoformat(),
-                    "start_time": booking_time.isoformat(),
-                    "symptoms": booking_context.get("symptoms")
+                    "doctor_email": str(doctor_email) if doctor_email else None,
+                    "doctor_name": str(booking_context.get("doctor_name")) if booking_context.get("doctor_name") else None,
+                    "patient_mobile_number": str(booking_context.get("patient_phone")) if booking_context.get("patient_phone") else None,
+                    "patient_name": str(booking_context.get("patient_name")) if booking_context.get("patient_name") else None,
+                    "patient_email": str(booking_context.get("patient_email")) if booking_context.get("patient_email") else None,
+                    "date": booking_date.isoformat() if booking_date else None,
+                    "start_time": booking_time.isoformat() if booking_time else None,
+                    "symptoms": str(booking_context.get("symptoms")) if booking_context.get("symptoms") else None
                 }
-                idempotency_key = self._build_idempotency_key("book", booking_payload, salt=conversation_id)
-                response = await calendar_client.book_appointment(booking_payload, idempotency_key=idempotency_key)
+                
+                # Remove None values to avoid API validation issues
+                booking_payload = {k: v for k, v in booking_payload.items() if v is not None}
+                
+                # Log booking attempt for debugging
+                logger.info(f"Attempting to book: doctor={doctor_email}, date={booking_date}, time={booking_time}, payload={booking_payload}")
+                
+                # Temporarily disable idempotency key due to Core API serialization issue
+                # idempotency_key = self._build_idempotency_key("book", booking_payload, salt=conversation_id)
+                response = await calendar_client.book_appointment(booking_payload, idempotency_key=None)
+                
+                # Log response for debugging
+                logger.info(f"Booking response: {response}")
 
             if isinstance(response, dict) and response.get("error"):
-                logger.error(f"Booking failed for {doctor_email}: {response.get('error')}")
+                error_msg = response.get('error', 'Unknown error')
+                error_details = response.get('details', '')
+                logger.error(f"Booking failed for {doctor_email}: {error_msg} - {error_details}")
+                
+                # Provide specific error feedback to user
+                user_message = "I couldn't book the appointment. "
+                if "already booked" in str(error_msg).lower() or "conflict" in str(error_msg).lower():
+                    user_message += "This time slot is already taken. Please choose a different time."
+                elif "not available" in str(error_msg).lower():
+                    user_message += "The doctor is not available at this time. Please try another slot."
+                elif "invalid" in str(error_msg).lower():
+                    user_message += "There's an issue with the booking details. Please try again with different information."
+                else:
+                    user_message += f"Error: {error_msg}. Please try another time or check the details."
+                
                 self.conversation_manager.update_conversation(
                     conversation_id=conversation_id,
                     state=ConversationState.GATHERING_INFO,
                     context={"pending_action": None}
                 )
-                return "I couldn't book the appointment due to an error. Please try another time or check the details."
+                return user_message
 
             self.conversation_manager.update_conversation(
                 conversation_id=conversation_id,
@@ -1662,17 +1771,41 @@ class ChatService:
             if not appointment_id:
                 logger.error("Booking response missing appointment id")
                 return "I couldn't confirm the booking. Please try again."
-            calendar_note = ""
-            if appointment_id and not calendar_event_id:
-                calendar_note = " Calendar sync is pending; it may take a moment to appear."
-            return (
-                f"Appointment booked successfully! "
-                f"{'Appointment ID: ' + appointment_id if appointment_id else ''}"
-                f"{calendar_note}"
-            ).strip()
+            
+            # Build professional confirmation message
+            doctor_name = self._format_doctor_name(booking_context.get('doctor_name'))
+            specialization = booking_context.get('specialization', '')
+            
+            confirmation_msg = (
+                f"✅ Appointment booked successfully!\n\n"
+                f"📋 Booking Details:\n"
+                f"  • Doctor: {doctor_name}{' (' + specialization + ')' if specialization else ''}\n"
+                f"  • Date: {booking_context.get('date')}\n"
+                f"  • Time: {booking_context.get('time')}\n"
+                f"  • Patient: {booking_context.get('patient_name')}\n"
+                f"  • Appointment ID: {appointment_id}\n\n"
+            )
+            
+            if not calendar_event_id:
+                confirmation_msg += "📅 Calendar sync is in progress and will complete shortly.\n\n"
+            
+            confirmation_msg += "You'll receive a confirmation. Is there anything else I can help you with?"
+            
+            return confirmation_msg
         except Exception as e:
-            logger.error(f"Booking failed: {e}")
-            return "I couldn't book the appointment due to an error. Please try again or choose another time."
+            logger.exception(f"Booking failed with exception: {e}")
+            error_detail = str(e)
+            user_message = "I couldn't book the appointment. "
+            
+            # Provide helpful error details
+            if "connection" in error_detail.lower() or "timeout" in error_detail.lower():
+                user_message += "There was a connection issue. Please try again in a moment."
+            elif "validation" in error_detail.lower():
+                user_message += "Some booking details need correction. Please verify the date, time, and doctor."
+            else:
+                user_message += f"Technical error occurred. Please try again or contact support."
+            
+            return user_message
 
     async def _execute_reschedule(self, conversation_id: str) -> str:
         """Execute appointment reschedule."""

@@ -1,14 +1,20 @@
 """
 Application configuration management.
 """
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
 from typing import Optional, List
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
-    
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore",  # Ignore env vars intended for other services (doctor/admin portals)
+    )
+
     # Database
     DATABASE_URL: str
     
@@ -66,10 +72,6 @@ class Settings(BaseSettings):
 
     # Timezone
     DEFAULT_TIMEZONE: str = "UTC"
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
 
     @field_validator("DATABASE_URL")
     @classmethod

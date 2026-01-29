@@ -1,6 +1,8 @@
 """
 Configuration settings for the Chatbot Service.
 """
+import os
+
 from pydantic_settings import BaseSettings
 from typing import Optional
 
@@ -24,8 +26,8 @@ class Settings(BaseSettings):
     OPENAI_MAX_TOKENS: int = 1000
 
     # Calendar Service
-    CALENDAR_SERVICE_URL: str = "http://localhost:8000"
-    CALENDAR_SERVICE_API_KEY: str = "dev-api-key"
+    CALENDAR_SERVICE_URL: str = os.getenv("CORE_API_BASE", "http://localhost:8000")
+    CALENDAR_SERVICE_API_KEY: str = os.getenv("SERVICE_API_KEY", "dev-api-key")
 
     # Redis (optional, for conversation state)
     REDIS_URL: Optional[str] = None
@@ -49,6 +51,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # Ignore extra env vars from parent .env files
 
 
 settings = Settings()

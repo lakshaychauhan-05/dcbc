@@ -68,3 +68,6 @@ htmlcov/
 
 # Node
 node_modules/
+
+# Run state (PIDs from start_app.ps1)
+.run/
