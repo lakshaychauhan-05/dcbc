@@ -293,7 +293,7 @@ class BookingService:
 
             cal = GoogleCalendarService()
             if old_event_id:
-                ok = cal.update_event(
+                result = cal.update_event(
                     doctor_email=appointment.doctor_email,
                     event_id=old_event_id,
                     patient_name=patient.name,
@@ -303,6 +303,10 @@ class BookingService:
                     description=f"Appointment with {patient.name}",
                     timezone_name=appointment.timezone,
                 )
+                ok = bool(result)
+                # If update_event returned a new event ID (old event was deleted), update DB
+                if isinstance(result, str):
+                    appointment.google_calendar_event_id = result
             else:
                 event_id = cal.create_event(
                     doctor_email=appointment.doctor_email,

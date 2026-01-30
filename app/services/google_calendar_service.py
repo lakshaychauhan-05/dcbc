@@ -149,11 +149,11 @@ class GoogleCalendarService:
         end_time: time,
         description: Optional[str] = None,
         timezone_name: Optional[str] = None
-    ) -> bool:
+    ) -> bool | str:
         """
         Update a Google Calendar event.
         Called when appointment is rescheduled.
-        
+
         Args:
             doctor_email: Doctor's Google Calendar email
             event_id: Google Calendar event ID
@@ -162,43 +162,64 @@ class GoogleCalendarService:
             start_time: New start time
             end_time: New end time
             description: Optional description
-            
+
         Returns:
-            True if successful, False otherwise
+            True if update successful, new event ID string if event was recreated,
+            False if both update and create failed
         """
         try:
             service = self._get_service(doctor_email)
-            
-            # Get existing event
-            event = service.events().get(
-                calendarId=doctor_email,
-                eventId=event_id
-            ).execute()
-            
+
+            # Get existing event with retry logic
+            try:
+                event = self._execute_with_retry(
+                    lambda: service.events().get(
+                        calendarId=doctor_email,
+                        eventId=event_id
+                    ).execute()
+                )
+            except HttpError as e:
+                if e.resp.status == 404:
+                    # Event was deleted from Google Calendar, create a new one
+                    logger.warning(f"Google Calendar event {event_id} not found, creating new event")
+                    new_event_id = self.create_event(
+                        doctor_email=doctor_email,
+                        patient_name=patient_name,
+                        appointment_date=appointment_date,
+                        start_time=start_time,
+                        end_time=end_time,
+                        description=description,
+                        timezone_name=timezone_name
+                    )
+                    if new_event_id:
+                        return new_event_id  # Return new ID so caller can update DB
+                    return False
+                raise  # Re-raise other HTTP errors
+
             try:
                 tz = ZoneInfo(timezone_name) if timezone_name else timezone.utc
             except Exception:
                 tz = timezone.utc
             start_datetime = datetime.combine(appointment_date, start_time).replace(tzinfo=tz)
             end_datetime = datetime.combine(appointment_date, end_time).replace(tzinfo=tz)
-            
+
             start_rfc3339 = start_datetime.isoformat()
             end_rfc3339 = end_datetime.isoformat()
-            
+
             event['summary'] = f'Appointment: {patient_name}'
             event['description'] = description or f'Appointment with {patient_name}'
             event['start']['dateTime'] = start_rfc3339
             event['end']['dateTime'] = end_rfc3339
             event['start']['timeZone'] = str(tz)
             event['end']['timeZone'] = str(tz)
-            
+
             updated_event = self._execute_with_retry(
                 lambda: service.events().update(calendarId=doctor_email, eventId=event_id, body=event).execute()
             )
-            
+
             logger.info(f"Updated Google Calendar event {event_id} for doctor {doctor_email}")
             return True
-            
+
         except HttpError as e:
             logger.error(f"Failed to update Google Calendar event: {str(e)}")
             return False

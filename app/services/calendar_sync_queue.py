@@ -235,7 +235,7 @@ class CalendarSyncQueue:
                         return
                     job.last_error = "Calendar event creation failed"
                 else:
-                    updated = self._calendar_service.update_event(
+                    result = self._calendar_service.update_event(
                         doctor_email=appointment.doctor_email,
                         event_id=appointment.google_calendar_event_id,
                         patient_name=patient.name,
@@ -245,7 +245,10 @@ class CalendarSyncQueue:
                         description=f"Appointment with {patient.name}",
                         timezone_name=appointment.timezone
                     )
-                    if updated:
+                    if result:
+                        # If update_event returned a new event ID (old event was deleted), update DB
+                        if isinstance(result, str):
+                            appointment.google_calendar_event_id = result
                         appointment.calendar_sync_status = "SYNCED"
                         appointment.calendar_sync_attempts = job.attempts
                         appointment.calendar_sync_next_attempt_at = None
