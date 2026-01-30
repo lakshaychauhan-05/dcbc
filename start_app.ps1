@@ -105,7 +105,22 @@ foreach ($svc in $services) {
 }
 
 Write-Host ""
+
+# Create logs directory if it doesn't exist
+$logsDir = Join-Path $BaseDir "logs"
+if (-Not (Test-Path $logsDir)) {
+    New-Item -ItemType Directory -Path $logsDir | Out-Null
+    Write-Host "✓ Created logs directory" -ForegroundColor Green
+}
+
+$logFile = Join-Path $logsDir "app.log"
+
+Write-Host ""
 Write-Host "All processes started. PIDs stored in .run/*.pid" -ForegroundColor Green
+Write-Host ""
+Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "  SERVICE URLS" -ForegroundColor Cyan
+Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "Core API docs:      http://localhost:8000/docs"
 Write-Host "Chatbot API:        http://localhost:8003"
 Write-Host "Chatbot UI:         http://localhost:3000"
@@ -114,4 +129,33 @@ Write-Host "Admin portal API:   http://localhost:5050/admin/health"
 Write-Host "Doctor UI:          http://localhost:5173"
 Write-Host "Admin UI:           http://localhost:5500"
 Write-Host ""
+Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "  LOGS" -ForegroundColor Cyan
+Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "Log file: $logFile"
+Write-Host ""
+Write-Host "Press Ctrl+C to stop viewing logs (services will keep running)" -ForegroundColor Yellow
 Write-Host "Use stop_app.ps1 to stop all services." -ForegroundColor Yellow
+Write-Host ""
+Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "  LIVE LOGS (waiting for output...)" -ForegroundColor Cyan
+Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host ""
+
+# Wait a moment for services to start and create log file
+Start-Sleep -Seconds 3
+
+# Show logs in this console (color-coded)
+while ($true) {
+    if (Test-Path $logFile) {
+        Get-Content $logFile -Wait -Tail 100 | ForEach-Object {
+            if ($_ -match 'ERROR') { Write-Host $_ -ForegroundColor Red }
+            elseif ($_ -match 'WARNING') { Write-Host $_ -ForegroundColor Yellow }
+            elseif ($_ -match 'Calendar|sync|event|SYNCED|PENDING') { Write-Host $_ -ForegroundColor Cyan }
+            else { Write-Host $_ }
+        }
+    } else {
+        Write-Host "Waiting for log file to be created..." -ForegroundColor DarkGray
+        Start-Sleep -Seconds 2
+    }
+}
