@@ -43,8 +43,8 @@ env/
 *.sqlite3
 
 # Logs
-*.log
-logs/
+# *.log
+# logs/
 
 # Google Calendar credentials
 credentials/
