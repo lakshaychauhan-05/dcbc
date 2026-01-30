@@ -1,13 +1,19 @@
 """
 Settings for the doctor portal service.
 """
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
 from typing import Optional, List
 
 
 class PortalSettings(BaseSettings):
     """Portal-specific configuration."""
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore"  # Ignore extra fields from .env
+    )
 
     DOCTOR_PORTAL_PORT: int = 5000
     DOCTOR_PORTAL_JWT_SECRET: str
@@ -20,10 +26,6 @@ class PortalSettings(BaseSettings):
     DOCTOR_PORTAL_OAUTH_CLIENT_SECRET: Optional[str] = None
     DOCTOR_PORTAL_OAUTH_REDIRECT_URI: Optional[str] = None
     DOCTOR_PORTAL_FRONTEND_CALLBACK_URL: Optional[str] = None
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
 
     @field_validator("DOCTOR_PORTAL_CORS_ORIGINS")
     @classmethod

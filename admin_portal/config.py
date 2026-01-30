@@ -1,12 +1,18 @@
 """
 Settings for the admin portal service.
 """
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
 from typing import Optional, List
 
 
 class AdminSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore"  # Ignore extra fields from .env
+    )
+    
     ADMIN_PORTAL_PORT: int = 5050
     ADMIN_PORTAL_DEBUG: bool = False
     ADMIN_PORTAL_JWT_SECRET: str
@@ -23,10 +29,6 @@ class AdminSettings(BaseSettings):
     CORE_API_BASE: str = "http://localhost:8000"
     PORTAL_API_BASE: str = "http://localhost:5000/portal"
     SERVICE_API_KEY: str  # shared X-API-Key for protected routes
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
 
     @field_validator("ADMIN_PORTAL_CORS_ORIGINS")
     @classmethod

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import secrets
 import uuid
 import httpx
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -118,6 +119,7 @@ def oauth_google_callback(code: str, db: Session = Depends(get_portal_db)):
         timeout=15.0,
     )
     if token_resp.status_code != 200:
+        logging.error(f"DEBUG: OAuth Failure Body: {token_resp.text}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="OAuth exchange failed",
