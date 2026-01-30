@@ -1604,12 +1604,29 @@ class ChatService:
         if not value:
             return None
         try:
+            normalized = value.lower().strip()
+            today = date.today()
+
+            # Handle common variations and typos for "tomorrow"
+            tomorrow_variants = ["tomorrow", "tommorow", "tomorow", "tmrw", "tmr", "2morrow"]
+            if any(variant in normalized for variant in tomorrow_variants):
+                from datetime import timedelta
+                return today + timedelta(days=1)
+
+            # Handle "today"
+            if "today" in normalized:
+                return today
+
+            # Handle "day after tomorrow"
+            if "day after" in normalized or "after tomorrow" in normalized:
+                from datetime import timedelta
+                return today + timedelta(days=2)
+
             parsed_date = date_parser.parse(value, fuzzy=True).date()
             # If parsed date is in the past and no year was specified, assume next year
-            today = date.today()
             if parsed_date < today and parsed_date.year == today.year:
-                # Check if user said "tomorrow" or similar
-                if any(word in value.lower() for word in ["tomorrow", "next"]):
+                # Check if user said "next" or similar
+                if "next" in normalized:
                     parsed_date = date_parser.parse(value, fuzzy=True, default=datetime.now()).date()
                 else:
                     # Try parsing with next year
@@ -1627,6 +1644,31 @@ class ChatService:
         if not value:
             return None
         try:
+            normalized = value.lower().strip()
+
+            # Handle common time-of-day references
+            time_mappings = {
+                "morning": dt_time(9, 0),
+                "early morning": dt_time(7, 0),
+                "late morning": dt_time(11, 0),
+                "noon": dt_time(12, 0),
+                "afternoon": dt_time(14, 0),
+                "early afternoon": dt_time(13, 0),
+                "late afternoon": dt_time(16, 0),
+                "evening": dt_time(18, 0),
+                "early evening": dt_time(17, 0),
+                "late evening": dt_time(20, 0),
+                "night": dt_time(20, 0),
+            }
+
+            for key, time_val in time_mappings.items():
+                if key in normalized:
+                    return time_val
+
+            # Handle "any time" or "anytime" - default to morning
+            if "any" in normalized or "anytime" in normalized:
+                return dt_time(9, 0)
+
             return date_parser.parse(value, fuzzy=True).time()
         except Exception:
             return None
