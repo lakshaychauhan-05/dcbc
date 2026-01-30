@@ -101,6 +101,42 @@ class CalendarSyncQueue:
         finally:
             db.close()
 
+    def trigger_immediate_sync(self, appointment_id: str, action: str = "CREATE") -> None:
+        """
+        Process the sync job for this appointment once, in the current thread.
+        Intended to be called from a background thread right after enqueue_create
+        so the calendar event is created within ~1-2 seconds without blocking the request.
+        Claims the job (IN_PROGRESS, attempts += 1) so the poll worker does not double-process.
+        """
+        if not appointment_id:
+            return
+        db = SessionLocal()
+        job_id = None
+        try:
+            job = (
+                db.query(CalendarSyncJob)
+                .filter(
+                    CalendarSyncJob.appointment_id == UUID(appointment_id),
+                    CalendarSyncJob.action == action,
+                    CalendarSyncJob.status == "PENDING",
+                )
+                .with_for_update(skip_locked=True)
+                .first()
+            )
+            if job:
+                job.status = "IN_PROGRESS"
+                job.attempts += 1
+                db.add(job)
+                db.commit()
+                job_id = job.id
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"Trigger immediate sync: could not find job for {appointment_id}: {e}")
+        finally:
+            db.close()
+        if job_id:
+            self._process_job(job_id)
+
     def _run(self) -> None:
         while not self._stop_event.is_set():
             try:

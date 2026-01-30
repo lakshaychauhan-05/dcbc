@@ -1723,12 +1723,18 @@ class ChatService:
 
             if isinstance(response, dict) and response.get("error"):
                 error_msg = response.get('error', 'Unknown error')
+                server_detail = response.get('detail')  # API's actual reason (e.g. "Slot is not available")
                 error_details = response.get('details', '')
                 logger.error(f"Booking failed for {doctor_email}: {error_msg} - {error_details}")
                 
-                # Provide specific error feedback to user
+                # Prefer server's detail so user sees the real reason (400/422 body)
                 user_message = "I couldn't book the appointment. "
-                if "already booked" in str(error_msg).lower() or "conflict" in str(error_msg).lower():
+                if server_detail:
+                    user_message += str(server_detail).strip()
+                    if not user_message.endswith("."):
+                        user_message += ". "
+                    user_message += "Please try another time or check the details."
+                elif "already booked" in str(error_msg).lower() or "conflict" in str(error_msg).lower():
                     user_message += "This time slot is already taken. Please choose a different time."
                 elif "not available" in str(error_msg).lower():
                     user_message += "The doctor is not available at this time. Please try another slot."

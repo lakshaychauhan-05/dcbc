@@ -92,14 +92,15 @@ async def book_appointment(
     record = None
     try:
         if idempotency_key:
+            payload_json = appointment_data.model_dump(mode="json")
             record, existing = idempotency_service.begin(
                 db=db,
                 key=idempotency_key,
                 endpoint="POST:/api/v1/appointments",
-                payload=appointment_data.model_dump()
+                payload=payload_json
             )
             if existing:
-                existing_result = idempotency_service.validate_existing(existing, appointment_data.model_dump())
+                existing_result = idempotency_service.validate_existing(existing, payload_json)
                 if existing_result["status"] == "conflict":
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
@@ -398,14 +399,15 @@ async def reschedule_appointment(
     record = None
     try:
         if idempotency_key:
+            payload_json = reschedule_data.model_dump(mode="json")
             record, existing = idempotency_service.begin(
                 db=db,
                 key=idempotency_key,
                 endpoint=f"PUT:/api/v1/appointments/{appointment_id}/reschedule",
-                payload=reschedule_data.model_dump()
+                payload=payload_json
             )
             if existing:
-                existing_result = idempotency_service.validate_existing(existing, reschedule_data.model_dump())
+                existing_result = idempotency_service.validate_existing(existing, payload_json)
                 if existing_result["status"] == "conflict":
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,

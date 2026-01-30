@@ -4,11 +4,12 @@ Uses database transactions with row-level locking to prevent double booking.
 Google Calendar is updated ONLY after DB transaction succeeds.
 """
 from datetime import date, time, datetime, timedelta
+import logging
 import re
+import threading
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from uuid import UUID
-import logging
 
 from app.config import settings
 from app.models.doctor import Doctor
@@ -178,7 +179,13 @@ class BookingService:
             
             # Queue calendar sync instead of blocking request
             calendar_sync_queue.enqueue_create(str(appointment.id))
-            
+            # Trigger immediate sync in background so event appears within ~1-2 seconds
+            threading.Thread(
+                target=calendar_sync_queue.trigger_immediate_sync,
+                args=(str(appointment.id), "CREATE"),
+                daemon=True,
+            ).start()
+
             logger.info(f"Successfully booked appointment {appointment.id}")
             return appointment
             

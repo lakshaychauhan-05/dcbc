@@ -39,7 +39,7 @@ $processes += [pscustomobject]@{ Name = "calendar-api"; Id = $api.Id; Command = 
 Start-Sleep -Seconds 1
 
 $chatbotDir = Join-Path $root "chatbot-service"
-$chatbotCmd = if (Test-Path "$root\venv\Scripts\python.exe") { "..\venv\Scripts\python.exe run_chatbot.py" } else { "python run_chatbot.py" }
+$chatbotCmd = if (Test-Path "$root\venv\Scripts\python.exe") { "`$env:CHATBOT_PORT='8003'; ..\venv\Scripts\python.exe run_chatbot.py" } else { "`$env:CHATBOT_PORT='8003'; python run_chatbot.py" }
 $chatbot = Start-Terminal -Title "Calendar Chatbot" -WorkingDirectory $chatbotDir -Command $chatbotCmd
 $processes += [pscustomobject]@{ Name = "chatbot"; Id = $chatbot.Id; Command = $chatbotCmd; WorkingDirectory = $chatbotDir }
 
@@ -75,4 +75,22 @@ $processes += [pscustomobject]@{ Name = "doctor-portal-ui"; Id = $doctorFrontend
 
 $processes | ConvertTo-Json -Depth 2 | Set-Content -Path $stateFile -Encoding UTF8
 
-Write-Host "Started project processes. PIDs saved to $stateFile"
+# Also write .run/*.pid so stop_app.ps1 can stop these when used with start_project.ps1
+$runDir = Join-Path $root ".run"
+if (-Not (Test-Path $runDir)) { New-Item -ItemType Directory -Path $runDir | Out-Null }
+$pidMap = @{
+    "frontend" = "chatbot_ui.pid"
+    "calendar-api" = "core.pid"
+    "chatbot" = "chatbot_api.pid"
+    "admin-portal-api" = "admin_api.pid"
+    "doctor-portal-api" = "doctor_api.pid"
+    "admin-portal-ui" = "admin_ui.pid"
+    "doctor-portal-ui" = "doctor_ui.pid"
+}
+foreach ($p in $processes) {
+    $f = $pidMap[$p.Name]
+    if ($f) { Set-Content -Path (Join-Path $runDir $f) -Value $p.Id }
+}
+
+Write-Host "Started project processes. PIDs saved to $stateFile and .run\*.pid"
+Write-Host "Use stop_app.ps1 to stop all services."

@@ -1,6 +1,7 @@
 """
 Client service for communicating with the Calendar Booking Service.
 """
+import json
 import httpx
 import logging
 from typing import Dict, List, Any, Optional
@@ -10,6 +11,20 @@ from app.core.config import settings
 from app.middleware.request_id import get_request_id
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_error_detail(response: Optional[httpx.Response]) -> Optional[str]:
+    """Extract 'detail' from API error response body (JSON)."""
+    if not response or not response.text:
+        return None
+    try:
+        body = response.json()
+        if isinstance(body, dict) and "detail" in body:
+            d = body["detail"]
+            return d if isinstance(d, str) else json.dumps(d)
+    except Exception:
+        pass
+    return None
 
 
 class CalendarClient:
@@ -123,7 +138,13 @@ class CalendarClient:
 
         except httpx.HTTPError as e:
             logger.error(f"Error booking appointment: {e}")
-            return {"error": str(e), "details": e.response.text if hasattr(e, 'response') else None}
+            response = getattr(e, "response", None)
+            detail = _parse_error_detail(response)
+            return {
+                "error": str(e),
+                "details": response.text if response else None,
+                "detail": detail,
+            }
 
     async def get_appointment(self, appointment_id: str) -> Dict[str, Any]:
         """Get appointment details."""
