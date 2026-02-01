@@ -590,15 +590,33 @@ class ChatService:
         if not specialization and context.get("last_specialization") and self._mentions_doctor_pronoun(message):
             specialization = context.get("last_specialization")
 
+        # Handle "tell me more", "yes", etc. when we have context about a doctor/specialization
+        wants_more_info = self._wants_more_information(message)
+
         if not doctor_name and not specialization:
             candidates = context.get("doctor_info_candidates") or []
-            if context.get("awaiting_doctor_info") and candidates:
-                if self._is_affirmative(message) or self._mentions_doctor_pronoun(message):
+            last_doctor = context.get("last_doctor_name")
+            last_spec = context.get("last_specialization")
+
+            # If user says "yes" or "tell me more" and we have a single candidate, show their info
+            if (self._is_affirmative(message) or wants_more_info) and candidates:
+                if len(candidates) == 1:
+                    # Only one doctor - show their details directly
+                    doctor_name = candidates[0]
+                elif context.get("awaiting_doctor_info"):
                     candidate_names = [self._format_doctor_name(name) for name in candidates[:3]]
                     return (
                         "Which doctor would you like more information about? "
                         f"I have {', '.join(candidate_names)}."
                     )
+
+            # If user says "tell me more" and we have last doctor context, use it
+            if not doctor_name and wants_more_info and last_doctor:
+                doctor_name = last_doctor
+
+            # If user says "tell me more" and we have specialization context but no doctor
+            if not doctor_name and not specialization and wants_more_info and last_spec:
+                specialization = last_spec
 
         if doctor_name:
             # Find specific doctor - use flexible matching
@@ -655,10 +673,39 @@ class ChatService:
             ]
             if matching_doctors:
                 self._store_doctor_candidates(conversation_id, matching_doctors, normalized_specialization)
-                doctor_names = [self._format_doctor_name(d.get("name")) for d in matching_doctors[:3]]
+
                 if len(matching_doctors) == 1:
-                    return f"For {specialization}, we have {doctor_names[0]}. Would you like more information or to book an appointment?"
+                    # Auto-show doctor info when only one candidate
+                    doctor = matching_doctors[0]
+                    display_name = self._format_doctor_name(doctor.get("name"))
+                    languages = self._safe_list(doctor.get("languages"))
+                    working_days = self._safe_list(doctor.get("working_days"))
+                    working_hours = doctor.get("working_hours") or {}
+                    pronoun = self._get_doctor_pronoun(doctor.get("name"))
+                    pronoun_caps = pronoun.capitalize()
+                    formatted_days = ', '.join([d.capitalize() for d in working_days]) if working_days else 'select days'
+
+                    # Update context with this doctor's info
+                    self.conversation_manager.update_conversation(
+                        conversation_id=conversation_id,
+                        context={
+                            "awaiting_doctor_info": False,
+                            "last_doctor_name": doctor.get("name"),
+                            "last_doctor_email": doctor.get("email"),
+                            "last_specialization": doctor.get("specialization") or normalized_specialization
+                        }
+                    )
+
+                    return (
+                        f"For {specialization}, we have {display_name}. "
+                        f"{pronoun_caps} has {doctor.get('experience_years', 'several')} years of experience "
+                        f"and speaks {', '.join(languages) if languages else 'multiple languages'}. "
+                        f"{pronoun_caps} is available {formatted_days} "
+                        f"from {working_hours.get('start', 'N/A')} to {working_hours.get('end', 'N/A')}. "
+                        f"Would you like to book an appointment?"
+                    )
                 else:
+                    doctor_names = [self._format_doctor_name(d.get("name")) for d in matching_doctors[:3]]
                     return f"For {specialization}, we have: {', '.join(doctor_names)}. Would you like more information about any of them?"
             else:
                 self.conversation_manager.update_conversation(
@@ -1535,6 +1582,45 @@ class ChatService:
             r"\bfrom your (network|clinic)\b"
         ]
         return any(re.search(pattern, message_lower) for pattern in yes_no_patterns)
+
+    def _wants_more_information(self, message: str) -> bool:
+        """Check if user wants more information about a previously mentioned doctor/topic."""
+        message_lower = message.lower().strip()
+
+        # Direct phrases indicating want for more info
+        more_info_phrases = [
+            "tell me more",
+            "more info",
+            "more information",
+            "more details",
+            "tell me about",
+            "more about",
+            "details",
+            "know more",
+            "learn more",
+            "elaborate",
+            "explain more",
+            "what else",
+            "anything else about",
+        ]
+
+        for phrase in more_info_phrases:
+            if phrase in message_lower:
+                return True
+
+        # Short follow-up patterns
+        short_patterns = [
+            r"^(tell me|show me|give me)(\s+more)?$",
+            r"^more$",
+            r"^details?$",
+            r"^info(rmation)?$",
+        ]
+
+        for pattern in short_patterns:
+            if re.match(pattern, message_lower):
+                return True
+
+        return False
 
     def _apply_rule_based_intent(
         self,
