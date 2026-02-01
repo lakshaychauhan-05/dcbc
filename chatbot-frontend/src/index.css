@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Modern Healthcare Chatbot Theme */
+:root {
+  --primary: #0891b2;
+  --primary-dark: #0e7490;
+  --primary-light: #22d3ee;
+  --secondary: #6366f1;
+  --accent: #10b981;
+  --surface: #ffffff;
+  --surface-elevated: #f8fafc;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --border: #e2e8f0;
+}
+
 /* Custom animations */
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -11,7 +25,7 @@
 @keyframes slideUp {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -19,64 +33,243 @@
   }
 }
 
-@keyframes bounceIn {
-  0% {
+@keyframes slideIn {
+  from {
     opacity: 0;
-    transform: scale(0.3);
+    transform: translateX(-10px);
   }
-  50% {
+  to {
     opacity: 1;
-    transform: scale(1.05);
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(8, 145, 178, 0.4);
   }
   70% {
-    transform: scale(0.9);
+    transform: scale(1);
+    box-shadow: 0 0 0 10px rgba(8, 145, 178, 0);
   }
   100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(8, 145, 178, 0);
+  }
+}
+
+@keyframes typing-dot {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
     opacity: 1;
     transform: scale(1);
   }
 }
 
-/* Custom components */
-.btn-primary {
-  @apply bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+/* Animation utilities */
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out forwards;
 }
 
-.btn-secondary {
-  @apply bg-secondary-600 hover:bg-secondary-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-secondary-500 focus:ring-offset-2;
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out forwards;
 }
 
-.input-field {
-  @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+.animate-slide-in-right {
+  animation: slideInRight 0.3s ease-out forwards;
 }
 
-.chat-bubble {
-  @apply max-w-xs lg:max-w-md px-4 py-2 rounded-lg shadow-sm;
+.animate-scale-in {
+  animation: scaleIn 0.2s ease-out forwards;
 }
 
+.animate-pulse-ring {
+  animation: pulse-ring 2s infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Typing indicator dots */
+.typing-dot {
+  animation: typing-dot 1.4s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(1) { animation-delay: 0s; }
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* Glassmorphism effects */
+.glass {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.glass-dark {
+  background: rgba(15, 23, 42, 0.9);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Gradient backgrounds */
+.gradient-primary {
+  background: linear-gradient(135deg, #0891b2 0%, #6366f1 100%);
+}
+
+.gradient-accent {
+  background: linear-gradient(135deg, #10b981 0%, #0891b2 100%);
+}
+
+.gradient-surface {
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+/* Chat bubble styles */
 .chat-bubble-user {
-  @apply bg-primary-600 text-white ml-auto;
+  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
+  border-radius: 18px 18px 4px 18px;
 }
 
 .chat-bubble-bot {
-  @apply bg-gray-100 text-gray-800 mr-auto;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px 18px 18px 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* Input field styling */
+.input-modern {
+  @apply w-full px-4 py-3 bg-white border border-slate-200 rounded-xl
+         focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500
+         transition-all duration-200 placeholder:text-slate-400;
+}
+
+/* Button styles */
+.btn-send {
+  @apply p-3 rounded-xl bg-gradient-to-r from-cyan-500 to-cyan-600 text-white
+         shadow-lg shadow-cyan-500/25 hover:shadow-xl hover:shadow-cyan-500/30
+         hover:from-cyan-600 hover:to-cyan-700 transition-all duration-200
+         disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none;
+}
+
+.btn-toggle {
+  @apply p-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-indigo-500 text-white
+         shadow-xl shadow-cyan-500/30 hover:shadow-2xl hover:shadow-cyan-500/40
+         hover:scale-105 transition-all duration-300;
+}
+
+/* Action chip styles */
+.action-chip {
+  @apply px-4 py-2 text-sm font-medium rounded-full border
+         transition-all duration-200 hover:scale-105 hover:shadow-md
+         focus:outline-none focus:ring-2 focus:ring-offset-2;
 }
 
 /* Scrollbar styling */
 .scrollbar-thin::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-track {
-  background: #e2e8f0;
-  border-radius: 3px;
+  background: transparent;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border-radius: 3px;
+  background: #cbd5e1;
+  border-radius: 10px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: #94a3b8;
+}
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Text selection */
+::selection {
+  background: rgba(8, 145, 178, 0.2);
+}
+
+/* Focus visible for accessibility */
+.focus-ring {
+  @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2;
+}
+
+/* Status indicator */
+.status-online {
+  @apply w-2.5 h-2.5 bg-emerald-500 rounded-full;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.status-online::after {
+  content: '';
+  @apply absolute inset-0 rounded-full bg-emerald-500;
+  animation: pulse-ring 2s infinite;
+}
+
+/* Message content formatting */
+.message-content {
+  @apply text-sm leading-relaxed whitespace-pre-wrap break-words;
+}
+
+.message-content strong {
+  @apply font-semibold;
+}
+
+.message-content em {
+  @apply italic;
+}
+
+/* Avatar styles */
+.avatar {
+  @apply w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0;
+}
+
+.avatar-bot {
+  @apply bg-gradient-to-br from-cyan-500 to-indigo-500 text-white;
+}
+
+.avatar-user {
+  @apply bg-gradient-to-br from-slate-600 to-slate-700 text-white;
 }

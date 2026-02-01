@@ -52,4 +52,14 @@ export const chatService = {
       throw error;
     }
   },
+
+  async healthCheck(): Promise<boolean> {
+    try {
+      const response = await api.get('/api/v1/health/', { timeout: 5000 });
+      return response.status === 200;
+    } catch (error) {
+      console.error('Health check failed:', error);
+      return false;
+    }
+  },
 };
