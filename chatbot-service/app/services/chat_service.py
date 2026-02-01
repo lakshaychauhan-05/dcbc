@@ -107,12 +107,24 @@ class ChatService:
                     booking_details=None
                 )
             elif pending_action and self._is_negative(request.message):
+                # Get booking context to offer helpful alternatives
+                booking_context = self.conversation_manager.get_booking_context(conversation_id)
                 self.conversation_manager.update_conversation(
                     conversation_id=conversation_id,
                     state=ConversationState.INITIAL,
                     context={"pending_action": None}
                 )
-                response_text = "Okay, I won't proceed. Let me know if you'd like to do something else."
+
+                # Generate helpful response based on what was being cancelled
+                if pending_action == "book":
+                    response_text = self._generate_cancellation_alternatives(booking_context)
+                elif pending_action == "reschedule":
+                    response_text = "No problem, I've cancelled the reschedule request. Would you like to try a different date or time?"
+                elif pending_action == "cancel":
+                    response_text = "Okay, I won't cancel the appointment. Is there anything else I can help you with?"
+                else:
+                    response_text = "Understood, I won't proceed with that. How else can I assist you?"
+
                 self.conversation_manager.add_message(
                     conversation_id=conversation_id,
                     role=MessageRole.ASSISTANT,
@@ -192,9 +204,9 @@ class ChatService:
                         )
                         intent_classification.intent = IntentType.BOOK_APPOINTMENT
 
-            # Get doctor data only when needed
+            # Get doctor data only when needed (including when symptoms are mentioned)
             doctor_data: List[Dict[str, Any]] = []
-            if self._needs_doctor_data(intent_classification.intent):
+            if self._needs_doctor_data(intent_classification.intent, request.message):
                 doctor_data = await self._get_doctor_data()
 
             # Generate response based on intent
@@ -436,6 +448,20 @@ class ChatService:
         # Update conversation context
         self.conversation_manager.update_booking_context(conversation_id, booking_context)
 
+        # Early phone validation: Check if user attempted to provide a phone number
+        # but it was invalid (contains digits but didn't normalize properly)
+        if not booking_context.get("patient_phone"):
+            invalid_phone_attempt = self._detect_invalid_phone_attempt(message)
+            if invalid_phone_attempt:
+                self.conversation_manager.update_conversation(
+                    conversation_id=conversation_id,
+                    state=ConversationState.GATHERING_INFO
+                )
+                return (
+                    "That doesn't look like a valid phone number. "
+                    "Please provide a 10-digit mobile number (with optional +91 prefix)."
+                )
+
         # Check what information we have and what's missing
         missing_info = self._get_missing_booking_info(booking_context)
 
@@ -456,7 +482,7 @@ class ChatService:
                     )
                     return (
                         "That doesn't look like a valid phone number. "
-                        "Please enter a 10-digit number (optional +91)."
+                        "Please provide a 10-digit mobile number (with optional +91 prefix)."
                     )
 
         if missing_info:
@@ -591,12 +617,26 @@ class ChatService:
                 working_days = self._safe_list(doctor.get("working_days"))
                 working_hours = doctor.get("working_hours") or {}
                 display_name = self._format_doctor_name(doctor.get("name"))
-                specialization = doctor.get('specialization', 'specialist')
+                specialization_text = doctor.get('specialization', 'specialist')
+
+                # Determine pronoun based on name (simple heuristic for common names)
+                pronoun = self._get_doctor_pronoun(doctor.get("name"))
+                pronoun_caps = pronoun.capitalize()
+
+                # Check if user is asking a yes/no question about this doctor
+                is_yes_no_question = self._is_yes_no_question_about_doctor(message)
+                prefix = ""
+                if is_yes_no_question:
+                    prefix = f"Yes, {display_name} is available in our network. "
+
+                # Format working days with capitalization
+                formatted_days = ', '.join([d.capitalize() for d in working_days]) if working_days else 'select days'
+
                 return (
-                    f"{display_name} specializes in {specialization} "
+                    f"{prefix}{display_name} specializes in {specialization_text} "
                     f"and has {doctor.get('experience_years', 'several')} years of experience. "
-                    f"They speak {', '.join(languages) if languages else 'multiple languages'} "
-                    f"and are available {', '.join(working_days) if working_days else 'on select days'} "
+                    f"{pronoun_caps} speaks {', '.join(languages) if languages else 'multiple languages'} "
+                    f"and is available {formatted_days} "
                     f"from {working_hours.get('start', 'N/A')} to {working_hours.get('end', 'N/A')}."
                 )
             else:
@@ -604,7 +644,7 @@ class ChatService:
                     conversation_id=conversation_id,
                     context={"awaiting_doctor_info": False}
                 )
-                return f"I couldn't find a doctor named {doctor_name}. Let me show you our available doctors."
+                return f"I couldn't find a doctor named {doctor_name} in our network. Let me show you our available doctors."
 
         elif specialization:
             # Find doctors by specialization
@@ -616,7 +656,10 @@ class ChatService:
             if matching_doctors:
                 self._store_doctor_candidates(conversation_id, matching_doctors, normalized_specialization)
                 doctor_names = [self._format_doctor_name(d.get("name")) for d in matching_doctors[:3]]
-                return f"For {specialization}, we have: {', '.join(doctor_names)}. Would you like more information about any of them?"
+                if len(matching_doctors) == 1:
+                    return f"For {specialization}, we have {doctor_names[0]}. Would you like more information or to book an appointment?"
+                else:
+                    return f"For {specialization}, we have: {', '.join(doctor_names)}. Would you like more information about any of them?"
             else:
                 self.conversation_manager.update_conversation(
                     conversation_id=conversation_id,
@@ -1103,6 +1146,39 @@ class ChatService:
         """Extract phone number from text without requiring keywords."""
         return self._normalize_phone_input(message)
 
+    def _detect_invalid_phone_attempt(self, message: str) -> bool:
+        """Detect if user attempted to provide a phone number but it's invalid.
+
+        Returns True if the message contains a sequence of digits that looks like
+        a phone number attempt but doesn't normalize to a valid phone.
+        """
+        if not message:
+            return False
+
+        # Look for digit sequences that might be phone attempts
+        # A phone attempt is: 4+ consecutive digits (ignoring spaces/dashes)
+        digit_sequences = re.findall(r'[\d\s\-]{4,}', message)
+        if not digit_sequences:
+            return False
+
+        for seq in digit_sequences:
+            digits_only = re.sub(r'\D', '', seq)
+            # If we have 4-9 or 11+ digits (not 10, not 12 with 91), it's invalid
+            if len(digits_only) >= 4:
+                # Check if it's a valid time (like 11:30 -> 1130, or 3rd feb -> 3)
+                if len(digits_only) <= 4 and re.search(r'\d{1,2}[:\s]?\d{2}', seq):
+                    continue  # This is likely a time, not a phone
+                if len(digits_only) <= 2:
+                    continue  # Too short, likely date/time component
+
+                # Check if this would normalize to a valid phone
+                normalized = self._normalize_phone_input(seq)
+                if normalized is None and len(digits_only) >= 6:
+                    # Has 6+ digits but doesn't normalize - invalid phone attempt
+                    return True
+
+        return False
+
     def _extract_name_from_text(self, message: str) -> Optional[str]:
         """Extract name from text patterns like 'my name is'."""
         # Common symptom/condition words that should NOT be treated as names
@@ -1314,24 +1390,151 @@ class ChatService:
 
         doctor_display = self._format_doctor_name(booking_context.get('doctor_name'))
         specialization = booking_context.get('specialization', 'specialist')
-        
+        patient_name = self._format_patient_name(booking_context.get('patient_name'))
+        date_display = self._format_date_display(booking_context.get('date'))
+
         return (
-            f"Perfect! Let me confirm your appointment:\n\n"
-            f"📅 Date: {booking_context.get('date')}\n"
-            f"⏰ Time: {booking_context.get('time')}\n"
-            f"👨‍⚕️ Doctor: {doctor_display} ({specialization})\n"
-            f"👤 Patient: {booking_context.get('patient_name')}\n"
-            f"📞 Phone: {booking_context.get('patient_phone')}\n\n"
+            f"Please confirm your appointment details:\n\n"
+            f"  Date: {date_display}\n"
+            f"  Time: {booking_context.get('time')}\n"
+            f"  Doctor: {doctor_display} ({specialization})\n"
+            f"  Patient: {patient_name}\n"
+            f"  Phone: {booking_context.get('patient_phone')}\n\n"
             f"Reply 'yes' to confirm or 'no' to cancel."
         )
 
-    def _needs_doctor_data(self, intent: IntentType) -> bool:
+    def _format_patient_name(self, name: Optional[str]) -> str:
+        """Format patient name with proper capitalization."""
+        if not name:
+            return "N/A"
+        return name.title()
+
+    def _format_date_display(self, date_str: Optional[str]) -> str:
+        """Format date string for display."""
+        if not date_str:
+            return "N/A"
+        try:
+            # Try to parse and format nicely
+            parsed = date_parser.parse(date_str, fuzzy=True)
+            return parsed.strftime("%B %d, %Y")  # e.g., "February 03, 2025"
+        except Exception:
+            return date_str  # Return as-is if parsing fails
+
+    def _generate_cancellation_alternatives(self, booking_context: Optional[Any]) -> str:
+        """Generate helpful alternatives when user cancels a booking."""
+        if not booking_context:
+            return "No problem. Would you like to book a different appointment or get information about our doctors?"
+
+        alternatives = []
+        doctor_name = None
+        if hasattr(booking_context, 'doctor_name'):
+            doctor_name = booking_context.doctor_name
+        elif isinstance(booking_context, dict):
+            doctor_name = booking_context.get('doctor_name')
+
+        if doctor_name:
+            alternatives.append(f"choose a different time with {self._format_doctor_name(doctor_name)}")
+            alternatives.append("select a different doctor")
+        else:
+            alternatives.append("try a different date or time")
+            alternatives.append("see other available doctors")
+
+        return f"No problem, I've cancelled that booking. Would you like to {alternatives[0]}, or {alternatives[1]}?"
+
+    def _needs_doctor_data(self, intent: IntentType, message: str = "") -> bool:
         """Determine whether doctor data is required for an intent."""
-        return intent in {
+        # Always need doctor data for these intents
+        if intent in {
             IntentType.BOOK_APPOINTMENT,
             IntentType.GET_DOCTOR_INFO,
             IntentType.CHECK_AVAILABILITY
-        }
+        }:
+            return True
+
+        # Also fetch doctor data when symptoms or health issues are mentioned
+        # This prevents "no doctors available" responses when user describes symptoms
+        if message and self._message_contains_symptoms(message):
+            return True
+
+        return False
+
+    def _message_contains_symptoms(self, message: str) -> bool:
+        """Check if message contains symptoms or health-related terms."""
+        symptom_keywords = [
+            "allergy", "allergies", "rash", "itching", "itch", "pain", "ache",
+            "fever", "cough", "cold", "headache", "stomach", "skin", "issue",
+            "problem", "sick", "unwell", "ill", "burning", "swelling", "infection",
+            "irritation", "discomfort", "hurt", "hurting", "sore", "throat",
+            "breathing", "chest", "heart", "dizzy", "nausea", "vomiting",
+            "diarrhea", "constipation", "fatigue", "tired", "weakness",
+            "treatment", "checkup", "check-up", "consultation", "condition"
+        ]
+        message_lower = message.lower()
+        return any(keyword in message_lower for keyword in symptom_keywords)
+
+    def _get_doctor_pronoun(self, name: Optional[str]) -> str:
+        """Get appropriate pronoun based on doctor's name.
+
+        Uses simple heuristics based on common Indian names.
+        Returns 'she' for likely female names, 'he' for likely male names,
+        'they' if uncertain.
+        """
+        if not name:
+            return "they"
+
+        first_name = name.replace("Dr.", "").replace("Dr", "").strip().split()[0].lower()
+
+        # Common Indian female name endings and names
+        female_indicators = [
+            "aditi", "priya", "neha", "pooja", "anjali", "swati", "kavita",
+            "sunita", "anita", "rita", "meena", "seema", "rekha", "suman",
+            "nisha", "asha", "usha", "lata", "geeta", "sita", "radha",
+            "deepa", "shobha", "sarita", "mamta", "kamla", "indira",
+            "lakshmi", "durga", "parvati", "savita", "saroj", "kusum",
+            "maya", "renu", "manju", "sudha", "pushpa", "shanti", "kiran",
+            "sangeeta", "babita", "archana", "vandana", "sapna", "divya",
+            "sneha", "shruti", "megha", "kriti", "aishwarya", "shreya",
+            "tanvi", "ishita", "nikita", "riya", "tanya", "sonia", "monica",
+            "preeti", "mansi", "jyoti", "pallavi", "aparna", "bhavna"
+        ]
+
+        # Check if name ends with common female suffixes
+        female_suffixes = ["ita", "ika", "ini", "ati", "ali", "eeta", "itha"]
+
+        if first_name in female_indicators:
+            return "she"
+
+        for suffix in female_suffixes:
+            if first_name.endswith(suffix):
+                return "she"
+
+        # Common male names
+        male_indicators = [
+            "amit", "rahul", "vikram", "raj", "suresh", "rajesh", "mahesh",
+            "ramesh", "anil", "sunil", "vijay", "ajay", "sanjay", "rakesh",
+            "prakash", "dinesh", "naresh", "girish", "satish", "ashok",
+            "manoj", "vinod", "arvind", "ravi", "kumar", "arun", "varun",
+            "karan", "rohan", "mohit", "nikhil", "sahil", "vishal", "kapil"
+        ]
+
+        if first_name in male_indicators:
+            return "he"
+
+        # Default to 'they' if uncertain
+        return "they"
+
+    def _is_yes_no_question_about_doctor(self, message: str) -> bool:
+        """Check if the message is a yes/no question about doctor availability."""
+        message_lower = message.lower()
+        # Patterns indicating yes/no questions about doctor availability
+        yes_no_patterns = [
+            r"\bis\b.*\b(from|in|part of|available|your)\b.*\b(network|clinic|hospital)\b",
+            r"\bdo you have\b",
+            r"\bis\b.*\bavailable\b",
+            r"\bcan i (see|book|meet)\b",
+            r"\bfrom your (network|clinic)\b"
+        ]
+        return any(re.search(pattern, message_lower) for pattern in yes_no_patterns)
 
     def _apply_rule_based_intent(
         self,
@@ -1359,6 +1562,10 @@ class ChatService:
             (r"\b(availability|available|slots)\b", IntentType.CHECK_AVAILABILITY),
             (r"\b(doctor|specialist|specialization|information)\b", IntentType.GET_DOCTOR_INFO),
             (r"\b(my appointments?|appointments list|appointment id)\b", IntentType.GET_MY_APPOINTMENTS),
+            # Health symptoms should trigger doctor lookup
+            (r"\b(allergy|allergies|rash|skin\s+problem|skin\s+issue|itching)\b", IntentType.GET_DOCTOR_INFO),
+            (r"\b(fever|cough|cold|headache|pain|ache|sick|unwell)\b", IntentType.GET_DOCTOR_INFO),
+            (r"\b(treatment|checkup|check-up|consultation)\b", IntentType.GET_DOCTOR_INFO),
         ]
 
         if intent_classification.intent != IntentType.UNKNOWN and intent_classification.confidence >= 0.5:
@@ -1973,21 +2180,23 @@ class ChatService:
             # Build professional confirmation message
             doctor_name = self._format_doctor_name(booking_context.get('doctor_name'))
             specialization = booking_context.get('specialization', '')
-            
+            patient_name = self._format_patient_name(booking_context.get('patient_name'))
+            date_display = self._format_date_display(booking_context.get('date'))
+
             confirmation_msg = (
-                f"✅ Appointment booked successfully!\n\n"
-                f"📋 Booking Details:\n"
-                f"  • Doctor: {doctor_name}{' (' + specialization + ')' if specialization else ''}\n"
-                f"  • Date: {booking_context.get('date')}\n"
-                f"  • Time: {booking_context.get('time')}\n"
-                f"  • Patient: {booking_context.get('patient_name')}\n"
-                f"  • Appointment ID: {appointment_id}\n\n"
+                f"Your appointment has been booked successfully.\n\n"
+                f"Booking Details:\n"
+                f"  - Doctor: {doctor_name}{' (' + specialization + ')' if specialization else ''}\n"
+                f"  - Date: {date_display}\n"
+                f"  - Time: {booking_context.get('time')}\n"
+                f"  - Patient: {patient_name}\n"
+                f"  - Appointment ID: {appointment_id}\n\n"
             )
-            
+
             if not calendar_event_id:
-                confirmation_msg += "📅 Calendar sync is in progress and will complete shortly.\n\n"
-            
-            confirmation_msg += "You'll receive a confirmation. Is there anything else I can help you with?"
+                confirmation_msg += "Calendar sync is in progress and will complete shortly.\n\n"
+
+            confirmation_msg += "You will receive a confirmation. Is there anything else I can help you with?"
             
             return confirmation_msg
         except Exception as e:
