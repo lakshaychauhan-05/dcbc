@@ -4,7 +4,7 @@ import EventNoteIcon from "@mui/icons-material/EventNote";
 import PeopleIcon from "@mui/icons-material/People";
 import SettingsIcon from "@mui/icons-material/Settings";
 import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
-import { NavLink, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 const navItems = [
   { to: "/dashboard", label: "Overview", icon: <DashboardIcon /> },
@@ -79,7 +79,7 @@ const Sidebar = () => {
           return (
             <ListItemButton
               key={item.to}
-              component={NavLink}
+              component={Link}
               to={item.to}
               sx={{
                 borderRadius: 2,
@@ -92,6 +92,7 @@ const Sidebar = () => {
                   : "transparent",
                 borderLeft: active ? "3px solid #3b82f6" : "3px solid transparent",
                 transition: "all 0.2s ease",
+                textDecoration: "none",
                 "&:hover": {
                   bgcolor: "rgba(59, 130, 246, 0.1)",
                   color: "#ffffff",
