@@ -4,7 +4,7 @@ import EventNoteIcon from "@mui/icons-material/EventNote";
 import PeopleIcon from "@mui/icons-material/People";
 import SettingsIcon from "@mui/icons-material/Settings";
 import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
-import { Link, useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 const navItems = [
   { to: "/dashboard", label: "Overview", icon: <DashboardIcon /> },
@@ -15,6 +15,12 @@ const navItems = [
 
 const Sidebar = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleNavigation = (path: string) => {
+    navigate(path);
+  };
+
   return (
     <Box
       width={260}
@@ -25,6 +31,7 @@ const Sidebar = () => {
         flexDirection: "column",
         boxShadow: "4px 0 20px rgba(0, 0, 0, 0.15)",
         position: "relative",
+        minHeight: "100vh",
         "&::after": {
           content: '""',
           position: "absolute",
@@ -45,7 +52,9 @@ const Sidebar = () => {
         gap={2}
         sx={{
           borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+          cursor: "pointer",
         }}
+        onClick={() => handleNavigation("/dashboard")}
       >
         <Box
           sx={{
@@ -79,8 +88,7 @@ const Sidebar = () => {
           return (
             <ListItemButton
               key={item.to}
-              component={Link}
-              to={item.to}
+              onClick={() => handleNavigation(item.to)}
               sx={{
                 borderRadius: 2,
                 mb: 0.5,
@@ -92,7 +100,6 @@ const Sidebar = () => {
                   : "transparent",
                 borderLeft: active ? "3px solid #3b82f6" : "3px solid transparent",
                 transition: "all 0.2s ease",
-                textDecoration: "none",
                 "&:hover": {
                   bgcolor: "rgba(59, 130, 246, 0.1)",
                   color: "#ffffff",
