@@ -592,17 +592,25 @@ class ChatService:
 
         # Handle "tell me more", "yes", etc. when we have context about a doctor/specialization
         wants_more_info = self._wants_more_information(message)
+        wants_all_info = self._wants_info_about_all(message)
 
         if not doctor_name and not specialization:
             candidates = context.get("doctor_info_candidates") or []
             last_doctor = context.get("last_doctor_name")
             last_spec = context.get("last_specialization")
 
+            # If user says "tell me about both/them/all", show info for ALL candidates
+            if wants_all_info and candidates and len(candidates) > 1:
+                return self._format_multiple_doctors_info(candidates, doctor_data, conversation_id)
+
             # If user says "yes" or "tell me more" and we have a single candidate, show their info
             if (self._is_affirmative(message) or wants_more_info) and candidates:
                 if len(candidates) == 1:
                     # Only one doctor - show their details directly
                     doctor_name = candidates[0]
+                elif wants_more_info and len(candidates) > 1:
+                    # User said "tell me more" with multiple candidates - show all
+                    return self._format_multiple_doctors_info(candidates, doctor_data, conversation_id)
                 elif context.get("awaiting_doctor_info"):
                     candidate_names = [self._format_doctor_name(name) for name in candidates[:3]]
                     return (
@@ -792,6 +800,70 @@ class ChatService:
             )
 
         if not date_obj:
+            # Check if user is asking about timing constraints (e.g., "is he not available for evening?")
+            is_timing_question, time_period = self._is_timing_constraint_question(message)
+
+            if is_timing_question:
+                # Try to use context to answer the timing question
+                context_doctor_name = doctor_name or context.get("last_doctor_name")
+                context_doctor_email = context.get("last_doctor_email")
+
+                if context_doctor_name or context_doctor_email:
+                    # Find the doctor to get working hours
+                    target_doctor = None
+                    if context_doctor_email:
+                        target_doctor = self._find_doctor_by_email(context_doctor_email, doctor_data)
+                    elif context_doctor_name:
+                        target_doctor = self._find_doctor_by_name(context_doctor_name, doctor_data)
+
+                    if target_doctor:
+                        working_hours = target_doctor.get("working_hours", {})
+                        work_start = working_hours.get("start", "09:00")
+                        work_end = working_hours.get("end", "17:00")
+                        doctor_display = self._format_doctor_name(target_doctor.get("name"))
+
+                        # Format working hours for display
+                        start_formatted = self._format_slot_time(work_start)
+                        end_formatted = self._format_slot_time(work_end)
+
+                        if time_period == "evening":
+                            return (
+                                f"{doctor_display}'s working hours are {start_formatted} to {end_formatted}, "
+                                f"so evening appointments after {end_formatted} are not available. "
+                                f"Would you like to book within these hours, or should I check another doctor?"
+                            )
+                        elif time_period == "afternoon":
+                            # Check if afternoon is within working hours
+                            try:
+                                end_hour = int(work_end.split(":")[0])
+                                if end_hour <= 12:
+                                    return (
+                                        f"{doctor_display}'s working hours are {start_formatted} to {end_formatted}, "
+                                        f"so afternoon slots are not available. "
+                                        f"Would you like a morning appointment, or should I check another doctor?"
+                                    )
+                                else:
+                                    return (
+                                        f"{doctor_display} is available in the afternoon until {end_formatted}. "
+                                        f"Working hours are {start_formatted} to {end_formatted}. "
+                                        f"What date would you like to check for afternoon availability?"
+                                    )
+                            except:
+                                pass
+                        elif time_period == "morning":
+                            return (
+                                f"{doctor_display} is available in the morning from {start_formatted}. "
+                                f"Working hours are {start_formatted} to {end_formatted}. "
+                                f"What date would you like to check?"
+                            )
+                        else:
+                            return (
+                                f"{doctor_display}'s working hours are {start_formatted} to {end_formatted}. "
+                                f"I can only show available slots within these hours. "
+                                f"What date would you like to check availability?"
+                            )
+
+            # Default behavior - ask for date
             if specialization:
                 return f"For {specialization}, what date would you like to check availability for?"
             return "Please tell me the date you want to check availability for."
@@ -1429,7 +1501,9 @@ class ChatService:
                     logger.info(f"Availability check result: {is_available}")
 
                     if not is_available and available_slots:
-                        slots_text = ", ".join([slot.get("start_time", "") for slot in available_slots[:5]])
+                        # Format available times nicely (12-hour format without seconds)
+                        formatted_slots = [self._format_slot_time(slot.get("start_time", "")) for slot in available_slots[:5]]
+                        slots_text = ", ".join([s for s in formatted_slots if s])
                         time_display = self._format_time_display(time_to_check)
                         return (
                             f"I'm sorry, {self._format_doctor_name(booking_context.get('doctor_name'))} is not available at "
@@ -1641,6 +1715,80 @@ class ChatService:
 
         return False
 
+    def _wants_info_about_all(self, message: str) -> bool:
+        """Check if user wants information about ALL/BOTH doctors."""
+        message_lower = message.lower().strip()
+
+        # Phrases indicating user wants info about multiple doctors
+        all_info_phrases = [
+            "both doctor",
+            "both of them",
+            "tell me about both",
+            "tell me about them",
+            "tell me both",
+            "info about both",
+            "info on both",
+            "about them",
+            "about all",
+            "all doctor",
+            "all of them",
+            "each doctor",
+            "each of them",
+            "everyone",
+            "all the doctor",
+        ]
+
+        for phrase in all_info_phrases:
+            if phrase in message_lower:
+                return True
+
+        # Pattern for "tell me more about them/both"
+        if re.search(r"\b(tell|show|give)\s+(me\s+)?(more\s+)?(about\s+)?(them|both|all)\b", message_lower):
+            return True
+
+        return False
+
+    def _format_multiple_doctors_info(
+        self,
+        candidate_names: List[str],
+        doctor_data: List[Dict[str, Any]],
+        conversation_id: str
+    ) -> str:
+        """Format information about multiple doctors."""
+        doctor_infos = []
+
+        for name in candidate_names[:3]:  # Limit to 3 doctors
+            doctor = self._find_doctor_by_name(name, doctor_data)
+            if doctor:
+                display_name = self._format_doctor_name(doctor.get("name"))
+                languages = self._safe_list(doctor.get("languages"))
+                working_hours = doctor.get("working_hours") or {}
+                exp_years = doctor.get("experience_years", "several")
+
+                info = (
+                    f"{display_name}: {exp_years} years experience, "
+                    f"speaks {', '.join(languages) if languages else 'multiple languages'}, "
+                    f"available {working_hours.get('start', 'N/A')} to {working_hours.get('end', 'N/A')}"
+                )
+                doctor_infos.append(info)
+
+        if doctor_infos:
+            # Update context with last specialization
+            if candidate_names:
+                first_doc = self._find_doctor_by_name(candidate_names[0], doctor_data)
+                if first_doc:
+                    self.conversation_manager.update_conversation(
+                        conversation_id=conversation_id,
+                        context={
+                            "last_specialization": first_doc.get("specialization"),
+                            "awaiting_doctor_info": True
+                        }
+                    )
+
+            return "Here's information about our doctors:\n\n" + "\n\n".join(doctor_infos) + "\n\nWould you like to book an appointment with any of them?"
+
+        return "I couldn't find detailed information for these doctors."
+
     def _apply_rule_based_intent(
         self,
         message: str,
@@ -1765,6 +1913,55 @@ class ChatService:
         is_not_confirmation = not self._is_affirmative(message) and not self._is_negative(message)
 
         return is_not_confirmation and (is_question or asks_about_availability)
+
+    def _is_timing_constraint_question(self, message: str) -> Tuple[bool, Optional[str]]:
+        """
+        Check if user is asking about timing constraints (e.g., why no evening slots).
+
+        Returns:
+            Tuple of (is_timing_question, time_period_asked)
+        """
+        normalized = message.strip().lower()
+
+        # Time period keywords
+        time_periods = {
+            "evening": "evening",
+            "late evening": "evening",
+            "early evening": "evening",
+            "afternoon": "afternoon",
+            "late afternoon": "afternoon",
+            "early afternoon": "afternoon",
+            "morning": "morning",
+            "early morning": "morning",
+            "late morning": "morning",
+            "night": "evening",
+        }
+
+        # Patterns that indicate asking about timing constraints
+        constraint_patterns = [
+            r"\b(is|are)\s+(he|she|they|doctor)\s+(not\s+)?available\s+.*?(evening|afternoon|morning|night)",
+            r"\b(not|no)\s+available\s+.*?(evening|afternoon|morning|night)",
+            r"\b(why|how come)\s+.*?(only|no)\s+.*?(evening|afternoon|morning)",
+            r"\bonly\s+(morning|afternoon|evening)\s+slot",
+            r"\b(evening|afternoon|morning|night)\s+(timing|slot|time)",
+            r"\b(available|free)\s+in\s+(the\s+)?(evening|afternoon|morning)",
+        ]
+
+        for pattern in constraint_patterns:
+            match = re.search(pattern, normalized)
+            if match:
+                # Find which time period they're asking about
+                for period_key, period_value in time_periods.items():
+                    if period_key in normalized:
+                        return True, period_value
+                return True, None
+
+        # Simple check - are they asking about a time period?
+        for period_key, period_value in time_periods.items():
+            if period_key in normalized and any(word in normalized for word in ["available", "timing", "slot", "time"]):
+                return True, period_value
+
+        return False, None
 
     def _normalize_specialization(self, value: Optional[str]) -> Optional[str]:
         """Normalize specialization terms (e.g., cardiologist -> cardiology)."""
@@ -2008,15 +2205,101 @@ class ChatService:
         }
         return sorted(specializations)
 
-    def _format_slots(self, slots: List[Dict[str, Any]]) -> str:
-        """Format availability slots for display."""
-        formatted = []
-        for slot in slots[:5]:
+    def _format_slot_time(self, time_str: str) -> str:
+        """Format a time string (HH:MM:SS or HH:MM) to 12-hour format."""
+        if not time_str:
+            return ""
+        try:
+            # Remove seconds if present
+            time_parts = time_str.split(":")
+            hour = int(time_parts[0])
+            minute = int(time_parts[1]) if len(time_parts) > 1 else 0
+
+            # Convert to 12-hour format
+            period = "AM" if hour < 12 else "PM"
+            display_hour = hour if hour <= 12 else hour - 12
+            if display_hour == 0:
+                display_hour = 12
+
+            if minute == 0:
+                return f"{display_hour} {period}"
+            else:
+                return f"{display_hour}:{minute:02d} {period}"
+        except (ValueError, IndexError):
+            return time_str  # Return original if parsing fails
+
+    def _format_slots(self, slots: List[Dict[str, Any]], show_range: bool = True) -> str:
+        """Format availability slots for display.
+
+        Args:
+            slots: List of slot dictionaries with start_time
+            show_range: If True, show a summary range for many slots
+
+        Returns:
+            Formatted string of available times
+        """
+        if not slots:
+            return "No slots available"
+
+        # Get all slot times
+        all_times = []
+        for slot in slots:
             start = slot.get("start_time")
-            end = slot.get("end_time")
-            if start and end:
-                formatted.append(f"{start}-{end}")
-        return ", ".join(formatted) if formatted else "No slots available"
+            if start:
+                all_times.append(start)
+
+        if not all_times:
+            return "No slots available"
+
+        total_slots = len(all_times)
+
+        # For a large number of slots, show a range with sample times
+        if show_range and total_slots > 8:
+            # Group by time of day
+            morning_slots = []
+            afternoon_slots = []
+            for t in all_times:
+                try:
+                    hour = int(t.split(":")[0])
+                    if hour < 12:
+                        morning_slots.append(t)
+                    else:
+                        afternoon_slots.append(t)
+                except:
+                    pass
+
+            parts = []
+            if morning_slots:
+                first_morning = self._format_slot_time(morning_slots[0])
+                last_morning = self._format_slot_time(morning_slots[-1])
+                if len(morning_slots) > 1:
+                    parts.append(f"Morning: {first_morning} - {last_morning} ({len(morning_slots)} slots)")
+                else:
+                    parts.append(f"Morning: {first_morning}")
+
+            if afternoon_slots:
+                first_afternoon = self._format_slot_time(afternoon_slots[0])
+                last_afternoon = self._format_slot_time(afternoon_slots[-1])
+                if len(afternoon_slots) > 1:
+                    parts.append(f"Afternoon: {first_afternoon} - {last_afternoon} ({len(afternoon_slots)} slots)")
+                else:
+                    parts.append(f"Afternoon: {first_afternoon}")
+
+            if parts:
+                return " | ".join(parts)
+
+        # For fewer slots, show individual times (up to 10)
+        formatted = []
+        for slot in slots[:10]:
+            start = slot.get("start_time")
+            if start:
+                formatted.append(self._format_slot_time(start))
+
+        result = ", ".join(formatted)
+        if total_slots > 10:
+            result += f" (and {total_slots - 10} more)"
+
+        return result
 
     def _safe_list(self, value: Any) -> List[str]:
         """Ensure value is a list of strings."""
