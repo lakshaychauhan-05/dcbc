@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import { DoctorProfile } from "../types";
 
@@ -39,10 +40,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  const logout = () => {
-    setToken(null);
+  const logout = useCallback(() => {
+    // Clear all auth data
+    localStorage.removeItem("portal_token");
+    setTokenState(null);
     setProfile(null);
-  };
+    // Force redirect to login page
+    window.location.href = "/login";
+  }, []);
 
   useEffect(() => {
     if (token) {
