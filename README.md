@@ -129,8 +129,8 @@ Exposes: calendar API 8000, chatbot API 8001, chatbot UI 3000, Postgres 5432, Re
 
 ## Testing
 ```bash
-pytest                   # unit tests
-python test_integration.py
+pytest                              # unit tests
+python scripts/test_integration.py  # integration tests
 ```
 Frontends:
 ```bash

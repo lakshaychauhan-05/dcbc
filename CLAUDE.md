@@ -64,10 +64,10 @@ docker-compose up --build -d
 
 ### Windows Development (PowerShell)
 ```powershell
-.\start_app.ps1                         # Start all services
-.\stop_app.ps1                          # Stop all services
-.\install_all.ps1                       # Install all dependencies
-.\verify_setup.ps1                      # Verify installation
+.\scripts\start_app.ps1                 # Start all services
+.\scripts\stop_app.ps1                  # Stop all services
+.\scripts\install_all.ps1               # Install all dependencies
+.\scripts\verify_setup.ps1              # Verify installation
 ```
 
 ## Code Structure Patterns

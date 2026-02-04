@@ -43,16 +43,11 @@ env/
 *.sqlite3
 
 # Logs
-# *.log
-# logs/
+*.log
+logs/
 
-# Google Calendar credentials
-credentials/
-*.json
-!requirements.txt
-!chatbot-frontend/package.json
-!chatbot-frontend/package-lock.json
-!chatbot-frontend/tsconfig.json
+# Google Calendar credentials - DO NOT commit service account keys
+credentials/*.json
 
 # Alembic
 alembic/versions/*.pyc
@@ -60,6 +55,8 @@ alembic/versions/*.pyc
 # OS
 .DS_Store
 Thumbs.db
+nul
+*.tmp
 
 # Testing
 .pytest_cache/
