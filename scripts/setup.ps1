@@ -1,6 +1,11 @@
 # Calendar Booking Project - Windows Setup Script
 # Run this script after PostgreSQL is installed
 
+# Get the project root (parent of scripts folder)
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$BaseDir = Split-Path -Parent $ScriptDir
+Set-Location $BaseDir
+
 Write-Host "=====================================" -ForegroundColor Cyan
 Write-Host "Calendar Booking Project Setup" -ForegroundColor Cyan
 Write-Host "=====================================" -ForegroundColor Cyan

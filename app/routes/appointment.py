@@ -72,7 +72,7 @@ async def get_availability(
         logger.error(f"Error getting availability: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get availability: {str(e)}"
+            detail="Failed to get availability. Please try again later."
         )
 
 
@@ -155,13 +155,13 @@ async def book_appointment(
             idempotency_service.complete(
                 db,
                 record,
-                {"detail": f"Failed to book appointment: {str(e)}"},
+                {"detail": "Failed to book appointment. Please try again later."},
                 status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         logger.error(f"Error booking appointment: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to book appointment: {str(e)}"
+            detail="Failed to book appointment. Please try again later."
         )
 
 

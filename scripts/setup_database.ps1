@@ -1,6 +1,11 @@
 # PostgreSQL Database Setup Script
 # This script helps set up the database for the Calendar Booking project
 
+# Get the project root (parent of scripts folder)
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$BaseDir = Split-Path -Parent $ScriptDir
+Set-Location $BaseDir
+
 Write-Host "=====================================" -ForegroundColor Cyan
 Write-Host "PostgreSQL Database Setup" -ForegroundColor Cyan
 Write-Host "=====================================" -ForegroundColor Cyan

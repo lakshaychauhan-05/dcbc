@@ -6,7 +6,9 @@ PID files are written to .run\*.pid so stop_app.ps1 can terminate them cleanly.
 #>
 
 $ErrorActionPreference = "Stop"
-$BaseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+# Get the project root (parent of scripts folder)
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$BaseDir = Split-Path -Parent $ScriptDir
 Set-Location $BaseDir
 
 Write-Host "=====================================" -ForegroundColor Cyan

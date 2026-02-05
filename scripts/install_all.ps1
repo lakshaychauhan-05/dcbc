@@ -4,7 +4,9 @@ Run this once before start_app.ps1.
 #>
 
 $ErrorActionPreference = "Stop"
-$BaseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+# Get the project root (parent of scripts folder)
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$BaseDir = Split-Path -Parent $ScriptDir
 Set-Location $BaseDir
 
 Write-Host "=====================================" -ForegroundColor Cyan

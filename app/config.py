@@ -1,9 +1,14 @@
 """
 Application configuration management.
 """
+import os
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
 from typing import Optional, List
+
+# Get the project root directory (where .env is located)
+PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
 
 class Settings(BaseSettings):
@@ -93,6 +98,22 @@ class Settings(BaseSettings):
         if not value:
             return None
         return ",".join([item.strip() for item in value.split(",") if item.strip()])
+
+    @field_validator("GOOGLE_CALENDAR_CREDENTIALS_PATH")
+    @classmethod
+    def normalize_credentials_path(cls, value: str) -> str:
+        """Convert relative path to absolute path based on project root."""
+        if not value:
+            return value
+        # If already absolute, return as-is
+        if os.path.isabs(value):
+            return value
+        # Convert relative path to absolute based on project root
+        # Handle paths starting with ./ or without
+        if value.startswith("./"):
+            value = value[2:]
+        abs_path = str(PROJECT_ROOT / value)
+        return abs_path
 
 
 settings = Settings()

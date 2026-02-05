@@ -1,7 +1,9 @@
 Param()
 
 $ErrorActionPreference = "Stop"
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+# Get the project root (parent of scripts folder)
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$root = Split-Path -Parent $ScriptDir
 $stateFile = Join-Path $root ".project-processes.json"
 
 if (Test-Path $stateFile) {

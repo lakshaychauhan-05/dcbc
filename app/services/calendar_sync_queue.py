@@ -148,7 +148,7 @@ class CalendarSyncQueue:
     def _process_batch(self) -> None:
         db = SessionLocal()
         now = datetime.now(timezone.utc)
-        jobs = []
+        job_ids = []
         try:
             jobs = (
                 db.query(CalendarSyncJob)
@@ -164,12 +164,13 @@ class CalendarSyncQueue:
                 job.status = "IN_PROGRESS"
                 job.attempts += 1
                 db.add(job)
+                job_ids.append(job.id)  # Store ID before session closes
             db.commit()
         finally:
             db.close()
 
-        for job in jobs:
-            self._process_job(job.id)
+        for job_id in job_ids:
+            self._process_job(job_id)
 
     def _calendar_sync_table_available(self) -> bool:
         db = SessionLocal()

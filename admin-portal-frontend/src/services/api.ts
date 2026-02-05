@@ -16,6 +16,19 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Response interceptor to handle 401 errors (expired/invalid token)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Clear invalid token and redirect to login
+      localStorage.removeItem("admin_token");
+      window.location.href = "/login";
+    }
+    return Promise.reject(error);
+  }
+);
+
 /** Normalize API list response: handles { doctors: [...] } or { data: { doctors: [...] } } */
 export function normalizeDoctorsResponse(data: unknown): any[] {
   if (data == null || typeof data !== "object") return [];

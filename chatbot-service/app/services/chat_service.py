@@ -899,7 +899,8 @@ class ChatService:
                                         f"Working hours are {start_formatted} to {end_formatted}. "
                                         f"What date would you like to check for afternoon availability?"
                                     )
-                            except:
+                            except (ValueError, IndexError) as e:
+                                logger.warning(f"Failed to parse working hours end time '{work_end}': {e}")
                                 pass
                         elif time_period == "morning":
                             return (
@@ -2427,7 +2428,8 @@ class ChatService:
                         slot_minute = int(start.split(":")[1]) if len(start.split(":")) > 1 else 0
                         if slot_hour < now.hour or (slot_hour == now.hour and slot_minute <= now.minute):
                             continue  # Skip past slots
-                    except:
+                    except (ValueError, IndexError) as e:
+                        logger.debug(f"Failed to parse slot time '{start}': {e}")
                         pass
                 all_times.append(start)
 
@@ -2450,7 +2452,8 @@ class ChatService:
                     afternoon_slots.append(t)
                 else:
                     evening_slots.append(t)
-            except:
+            except (ValueError, IndexError) as e:
+                logger.debug(f"Failed to categorize slot time '{t}': {e}")
                 pass
 
         # Build grouped output
@@ -2614,7 +2617,8 @@ class ChatService:
                     # Try parsing with next year
                     try:
                         parsed_date = date_parser.parse(value, fuzzy=True, default=datetime(today.year + 1, 1, 1)).date()
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Failed to parse date '{value}' with next year fallback: {e}")
                         pass
             return parsed_date
         except Exception as e:
@@ -2770,10 +2774,10 @@ class ChatService:
                 
                 # Log booking attempt for debugging
                 logger.info(f"Attempting to book: doctor={doctor_email}, date={booking_date}, time={booking_time}, payload={booking_payload}")
-                
-                # Temporarily disable idempotency key due to Core API serialization issue
-                # idempotency_key = self._build_idempotency_key("book", booking_payload, salt=conversation_id)
-                response = await calendar_client.book_appointment(booking_payload, idempotency_key=None)
+
+                # Build idempotency key to prevent duplicate bookings on retry
+                idempotency_key = self._build_idempotency_key("book", booking_payload, salt=conversation_id)
+                response = await calendar_client.book_appointment(booking_payload, idempotency_key=idempotency_key)
                 
                 # Log response for debugging
                 logger.info(f"Booking response: {response}")

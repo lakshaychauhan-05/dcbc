@@ -4,7 +4,9 @@ Reads PIDs from .run/*.pid (start_app.ps1) or .project-processes.json (start_pro
 #>
 
 $ErrorActionPreference = "Stop"
-$BaseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+# Get the project root (parent of scripts folder)
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$BaseDir = Split-Path -Parent $ScriptDir
 $runDir = Join-Path $BaseDir ".run"
 $stateFile = Join-Path $BaseDir ".project-processes.json"
 

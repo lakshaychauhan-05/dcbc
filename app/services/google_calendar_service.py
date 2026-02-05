@@ -3,6 +3,8 @@ Google Calendar Service - syncs appointments with Google Calendar.
 Google Calendar is ONLY a mirror of confirmed appointments.
 Never reads availability from Google Calendar.
 """
+import os
+from pathlib import Path
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -15,13 +17,32 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
+# Project root for resolving relative paths
+_PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
+
+
+def _resolve_credentials_path(path: str) -> str:
+    """Resolve credentials path to absolute path."""
+    if not path:
+        return path
+    # Already absolute
+    if os.path.isabs(path):
+        return path
+    # Handle ./ prefix
+    if path.startswith("./"):
+        path = path[2:]
+    # Resolve relative to project root
+    abs_path = str(_PROJECT_ROOT / path)
+    return abs_path
+
 
 class GoogleCalendarService:
     """Service for interacting with Google Calendar API."""
 
     def __init__(self):
         """Initialize Google Calendar service with service account credentials."""
-        self.credentials_path = settings.GOOGLE_CALENDAR_CREDENTIALS_PATH
+        # Always resolve to absolute path to avoid working directory issues
+        self.credentials_path = _resolve_credentials_path(settings.GOOGLE_CALENDAR_CREDENTIALS_PATH)
         self.delegated_admin_email = settings.GOOGLE_CALENDAR_DELEGATED_ADMIN_EMAIL
         self._service = None
         self.last_error: Optional[str] = None  # Stores detailed error from last failed operation

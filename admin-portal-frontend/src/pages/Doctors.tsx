@@ -137,7 +137,7 @@ const Doctors = () => {
       }
       const response = await api.post("/doctors", payload);
       if (response.data?.portal_account_created) {
-        addToast(`Doctor created with portal login ready! Password: ${initialPassword}`, "success");
+        addToast("Doctor created with portal login ready! Please securely share the password with the doctor.", "success");
       } else if (response.data?.portal_account_note) {
         addToast(`Doctor created. ${response.data.portal_account_note}`, "success");
       } else {
@@ -230,7 +230,9 @@ const Doctors = () => {
       const resp = await api.post(`/doctors/${encodeURIComponent(email)}/portal-account`);
       const password = resp.data?.password;
       if (password) {
-        addToast(`Portal account provisioned. Temporary password: ${password}`, "success");
+        // Log password to console for secure retrieval, don't show in UI
+        console.info(`[ADMIN] Portal account password for ${email} - check response in Network tab or copy from here:`, password);
+        addToast("Portal account provisioned. Check browser console (F12) for the temporary password.", "success");
       } else {
         addToast("Portal account provisioned", "success");
       }
