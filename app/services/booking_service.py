@@ -196,7 +196,7 @@ class BookingService:
                     appointment_time=appointment.start_time,
                     symptoms=booking_data.symptoms
                 )
-                # Patient SMS notification
+                # Patient SMS notification (respects sms_opt_in preference)
                 notification_service.send_patient_booking_sms(
                     patient_mobile=patient.mobile_number,
                     patient_name=patient.name,
@@ -204,7 +204,8 @@ class BookingService:
                     doctor_specialization=doctor.specialization,
                     appointment_date=appointment.date,
                     appointment_time=appointment.start_time,
-                    clinic_address=doctor.clinic.address if doctor.clinic else settings.CLINIC_ADDRESS
+                    clinic_address=doctor.clinic.address if doctor.clinic else settings.CLINIC_ADDRESS,
+                    sms_opt_in=patient.sms_opt_in
                 )
             except Exception as e:
                 logger.warning(f"Failed to send booking notifications: {e}")
@@ -388,7 +389,8 @@ class BookingService:
                     doctor_specialization=doctor.specialization,
                     new_date=reschedule_data.new_date,
                     new_time=reschedule_data.new_start_time,
-                    clinic_address=doctor.clinic.address if doctor.clinic else settings.CLINIC_ADDRESS
+                    clinic_address=doctor.clinic.address if doctor.clinic else settings.CLINIC_ADDRESS,
+                    sms_opt_in=patient.sms_opt_in
                 )
             except Exception as e:
                 logger.warning(f"Failed to send reschedule notifications: {e}")
@@ -499,7 +501,8 @@ class BookingService:
                         patient_name=patient.name,
                         doctor_name=doctor.name,
                         appointment_date=appointment_date,
-                        appointment_time=appointment_time
+                        appointment_time=appointment_time,
+                        sms_opt_in=patient.sms_opt_in
                     )
                 except Exception as e:
                     logger.warning(f"Failed to send cancellation notifications: {e}")

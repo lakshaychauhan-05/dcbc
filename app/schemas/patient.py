@@ -15,6 +15,7 @@ class PatientBase(BaseModel):
     email: Optional[EmailStr] = None
     gender: Optional[str] = Field(None, max_length=20)
     date_of_birth: Optional[date] = None
+    sms_opt_in: bool = Field(default=True, description="Whether patient wants SMS notifications")
 
     @field_validator("mobile_number")
     @classmethod
@@ -66,13 +67,15 @@ class PatientUpdate(BaseModel):
     email: Optional[EmailStr] = None
     gender: Optional[str] = Field(None, max_length=20)
     date_of_birth: Optional[date] = None
+    sms_opt_in: Optional[bool] = Field(None, description="Whether patient wants SMS notifications")
 
 
 class PatientResponse(PatientBase):
     """Schema for patient response."""
     id: UUID
+    sms_opt_in: bool
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 

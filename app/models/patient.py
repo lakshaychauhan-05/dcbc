@@ -3,7 +3,7 @@ Patient model - represents a patient.
 """
 import uuid
 from datetime import datetime, date, timezone
-from sqlalchemy import Column, String, Integer, Date, DateTime, Index
+from sqlalchemy import Column, String, Integer, Date, DateTime, Index, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -22,6 +22,7 @@ class Patient(Base):
     email = Column(String(255), nullable=True)
     gender = Column(String(20), nullable=True)
     date_of_birth = Column(Date, nullable=True)
+    sms_opt_in = Column(Boolean, default=True, nullable=False)  # SMS notification preference
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     
     # Relationships
