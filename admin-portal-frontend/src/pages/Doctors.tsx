@@ -12,6 +12,7 @@ type Clinic = {
 type Doctor = {
   email: string;
   name: string;
+  phone_number?: string;
   clinic_id: string;
   specialization: string;
   is_active: boolean;
@@ -43,6 +44,7 @@ const Doctors = () => {
   const [clinicId, setClinicId] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [specialization, setSpecialization] = useState("");
   const [experienceYears, setExperienceYears] = useState(1);
   const [languages, setLanguages] = useState("english");
@@ -121,6 +123,7 @@ const Doctors = () => {
         clinic_id: clinicId,
         name,
         email,
+        phone_number: phoneNumber.trim() || null,
         specialization,
         experience_years: Number(experienceYears),
         languages: typeof languages === "string" ? languages.split(",").map((l) => l.trim()).filter(Boolean) : languages,
@@ -145,6 +148,7 @@ const Doctors = () => {
       }
       setName("");
       setEmail("");
+      setPhoneNumber("");
       setSpecialization("");
       setExperienceYears(1);
       setLanguages("english");
@@ -288,6 +292,19 @@ const Doctors = () => {
             <div className="form-group">
               <label htmlFor="doctor-email">Email</label>
               <input id="doctor-email" type="email" placeholder="doctor@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            </div>
+            <div className="form-group">
+              <label htmlFor="doctor-phone">Phone Number</label>
+              <input
+                id="doctor-phone"
+                type="tel"
+                placeholder="9876543210 or +919876543210"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+              />
+              <small style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
+                10 digits starting with 6-9, optional +91 prefix. Used for SMS notifications.
+              </small>
             </div>
             <div className="form-group">
               <label htmlFor="doctor-password">Initial Password (for Portal Login)</label>

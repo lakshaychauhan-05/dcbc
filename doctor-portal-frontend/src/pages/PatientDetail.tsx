@@ -32,6 +32,7 @@ import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
 import WarningIcon from "@mui/icons-material/Warning";
 import NotesIcon from "@mui/icons-material/Notes";
 import AddIcon from "@mui/icons-material/Add";
+import SmsIcon from "@mui/icons-material/Sms";
 import api from "../services/api";
 import { PatientDetail as PatientDetailType, PatientHistoryItem } from "../types";
 
@@ -265,6 +266,30 @@ const PatientDetailPage = () => {
                     </Typography>
                     <Typography variant="body2" fontWeight={500}>
                       {patient.mobile_number || "Not provided"}
+                    </Typography>
+                  </Box>
+                </Box>
+
+                <Box display="flex" alignItems="center" gap={2}>
+                  <Box
+                    sx={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 2,
+                      bgcolor: patient.sms_opt_in !== false ? "#dcfce7" : "#fee2e2",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <SmsIcon sx={{ fontSize: 20, color: patient.sms_opt_in !== false ? "#16a34a" : "#dc2626" }} />
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      SMS Notifications
+                    </Typography>
+                    <Typography variant="body2" fontWeight={500} color={patient.sms_opt_in !== false ? "#16a34a" : "#dc2626"}>
+                      {patient.sms_opt_in !== false ? "Enabled" : "Disabled"}
                     </Typography>
                   </Box>
                 </Box>

@@ -1,6 +1,7 @@
 export type DoctorProfile = {
   email: string;
   name: string;
+  phone_number?: string;
   specialization: string;
   experience_years: number;
   languages: string[];
@@ -13,6 +14,7 @@ export type PatientSummary = {
   name: string;
   mobile_number?: string;
   email?: string;
+  sms_opt_in?: boolean;
 };
 
 export type PatientHistoryItem = {
