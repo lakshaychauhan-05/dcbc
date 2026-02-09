@@ -1,21 +1,19 @@
 """
 Notification Service - handles SMS notifications for doctors and patients.
-Uses Twilio Content Templates API for DLT compliance in India.
+Uses Twilio SMS API with direct message body for proper variable substitution.
 
 Features:
 - Async SMS sending (non-blocking)
 - Delivery status tracking with message SID
-- Template variable validation
 - Retry logic with exponential backoff
 - SMS opt-out support
 - Structured logging
 
 Email notifications are commented out for now - can be enabled later.
 """
-import json
 import logging
 import threading
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional
 from datetime import date, time
 from dataclasses import dataclass
 from enum import Enum
@@ -46,17 +44,7 @@ class SMSResult:
 
 
 class NotificationService:
-    """Service for sending SMS notifications to doctors and patients using Twilio Content Templates."""
-
-    # Template variable counts for validation
-    TEMPLATE_VARIABLE_COUNTS = {
-        NotificationType.DOCTOR_BOOKING: 5,      # patient_name, mobile, date, time, symptoms
-        NotificationType.DOCTOR_RESCHEDULE: 6,   # patient_name, mobile, old_date, old_time, new_date, new_time
-        NotificationType.DOCTOR_CANCEL: 4,       # patient_name, mobile, date, time
-        NotificationType.PATIENT_BOOKING: 6,     # name, doctor, specialization, date, time, location
-        NotificationType.PATIENT_RESCHEDULE: 6,  # name, doctor, specialization, date, time, location
-        NotificationType.PATIENT_CANCEL: 4,      # name, doctor, date, time
-    }
+    """Service for sending SMS notifications to doctors and patients using Twilio."""
 
     # Max retry attempts for transient failures
     MAX_RETRIES = 3
@@ -111,44 +99,10 @@ class NotificationService:
         """Format date for display."""
         return d.strftime("%B %d, %Y")
 
-    def _validate_template_variables(
-        self,
-        notification_type: NotificationType,
-        content_variables: Dict[str, str]
-    ) -> Tuple[bool, Optional[str]]:
-        """Validate that content variables match template requirements."""
-        expected_count = self.TEMPLATE_VARIABLE_COUNTS.get(notification_type)
-        if expected_count is None:
-            return False, f"Unknown notification type: {notification_type}"
-
-        actual_count = len(content_variables)
-        if actual_count != expected_count:
-            return False, f"Expected {expected_count} variables, got {actual_count}"
-
-        # Check for empty values
-        for key, value in content_variables.items():
-            if value is None or (isinstance(value, str) and not value.strip()):
-                return False, f"Variable '{key}' is empty or None"
-
-        return True, None
-
-    def _get_template_sid(self, notification_type: NotificationType) -> Optional[str]:
-        """Get the template SID for a notification type."""
-        template_map = {
-            NotificationType.DOCTOR_BOOKING: settings.TWILIO_TEMPLATE_DOCTOR_BOOKING,
-            NotificationType.DOCTOR_RESCHEDULE: settings.TWILIO_TEMPLATE_DOCTOR_RESCHEDULE,
-            NotificationType.DOCTOR_CANCEL: settings.TWILIO_TEMPLATE_DOCTOR_CANCEL,
-            NotificationType.PATIENT_BOOKING: settings.TWILIO_TEMPLATE_PATIENT_BOOKING,
-            NotificationType.PATIENT_RESCHEDULE: settings.TWILIO_TEMPLATE_PATIENT_RESCHEDULE,
-            NotificationType.PATIENT_CANCEL: settings.TWILIO_TEMPLATE_PATIENT_CANCEL,
-        }
-        return template_map.get(notification_type)
-
     def _send_sms_with_retry(
         self,
         to_number: str,
-        template_sid: str,
-        content_variables: Dict[str, str],
+        body: str,
         notification_type: NotificationType
     ) -> SMSResult:
         """Send SMS with retry logic for transient failures."""
@@ -169,8 +123,7 @@ class NotificationService:
                 message = self.twilio_client.messages.create(
                     from_=settings.TWILIO_PHONE_NUMBER,
                     to=normalized_number,
-                    content_sid=template_sid,
-                    content_variables=json.dumps(content_variables)
+                    body=body
                 )
 
                 logger.info(
@@ -179,7 +132,6 @@ class NotificationService:
                         "message_sid": message.sid,
                         "to": normalized_number,
                         "notification_type": notification_type.value,
-                        "template_sid": template_sid,
                         "attempt": attempt + 1
                     }
                 )
@@ -219,8 +171,7 @@ class NotificationService:
             extra={
                 "to": normalized_number,
                 "error": last_error,
-                "notification_type": notification_type.value,
-                "template_sid": template_sid
+                "notification_type": notification_type.value
             }
         )
 
@@ -231,14 +182,14 @@ class NotificationService:
             notification_type=notification_type.value
         )
 
-    def _send_sms_with_template(
+    def _send_sms(
         self,
         to_number: str,
+        body: str,
         notification_type: NotificationType,
-        content_variables: Dict[str, str],
         async_send: bool = True
     ) -> SMSResult:
-        """Send an SMS using Twilio Content Templates API."""
+        """Send an SMS using Twilio."""
         if not self.sms_enabled or not self.twilio_client:
             logger.debug(f"SMS disabled, skipping message to {to_number}")
             return SMSResult(success=False, error="SMS notifications disabled")
@@ -247,30 +198,19 @@ class NotificationService:
             logger.warning("Cannot send SMS: phone number is empty")
             return SMSResult(success=False, error="Phone number is empty")
 
-        template_sid = self._get_template_sid(notification_type)
-        if not template_sid:
-            logger.warning(f"Template not configured for {notification_type.value}")
-            return SMSResult(success=False, error=f"Template not configured: {notification_type.value}")
-
-        # Validate template variables
-        is_valid, validation_error = self._validate_template_variables(notification_type, content_variables)
-        if not is_valid:
-            logger.warning(f"Template variable validation failed: {validation_error}")
-            return SMSResult(success=False, error=validation_error)
-
         if async_send:
             # Send asynchronously in a background thread
             thread = threading.Thread(
                 target=self._send_sms_with_retry,
-                args=(to_number, template_sid, content_variables, notification_type),
+                args=(to_number, body, notification_type),
                 daemon=True
             )
             thread.start()
-            logger.debug(f"SMS queued for async delivery to {to_number}")
+            logger.info(f"SMS queued for async delivery to {to_number}")
             return SMSResult(success=True, error=None, to_number=to_number, notification_type=notification_type.value)
         else:
             # Send synchronously
-            return self._send_sms_with_retry(to_number, template_sid, content_variables, notification_type)
+            return self._send_sms_with_retry(to_number, body, notification_type)
 
     # ==================== DOCTOR SMS NOTIFICATIONS ====================
 
@@ -285,25 +225,24 @@ class NotificationService:
         symptoms: Optional[str] = None,
         async_send: bool = True
     ) -> SMSResult:
-        """Send booking confirmation SMS to doctor using Content Template."""
+        """Send booking confirmation SMS to doctor."""
         if not doctor_phone:
             logger.debug(f"Doctor {doctor_name} has no phone number, skipping SMS")
             return SMSResult(success=False, error="Doctor phone number not available")
 
-        # Content variables must match the template placeholders
-        # Template format: New Appointment! Patient: {{1}}, Mobile: {{2}}, Date: {{3}}, Time: {{4}}, Symptoms: {{5}}
-        content_variables = {
-            "1": patient_name,
-            "2": patient_mobile,
-            "3": self._format_date(appointment_date),
-            "4": self._format_time(appointment_time),
-            "5": symptoms or "Not specified"
-        }
+        body = (
+            f"New Appointment!\n"
+            f"Patient: {patient_name}\n"
+            f"Mobile: {patient_mobile}\n"
+            f"Date: {self._format_date(appointment_date)}\n"
+            f"Time: {self._format_time(appointment_time)}\n"
+            f"Symptoms: {symptoms or 'Not specified'}"
+        )
 
-        return self._send_sms_with_template(
+        return self._send_sms(
             doctor_phone,
+            body,
             NotificationType.DOCTOR_BOOKING,
-            content_variables,
             async_send
         )
 
@@ -319,25 +258,23 @@ class NotificationService:
         new_time: time,
         async_send: bool = True
     ) -> SMSResult:
-        """Send reschedule notification SMS to doctor using Content Template."""
+        """Send reschedule notification SMS to doctor."""
         if not doctor_phone:
             logger.debug(f"Doctor {doctor_name} has no phone number, skipping SMS")
             return SMSResult(success=False, error="Doctor phone number not available")
 
-        # Template format: Appointment Rescheduled! Patient: {{1}}, Mobile: {{2}}, Old: {{3}} {{4}}, New: {{5}} {{6}}
-        content_variables = {
-            "1": patient_name,
-            "2": patient_mobile,
-            "3": self._format_date(old_date),
-            "4": self._format_time(old_time),
-            "5": self._format_date(new_date),
-            "6": self._format_time(new_time)
-        }
+        body = (
+            f"Appointment Rescheduled!\n"
+            f"Patient: {patient_name}\n"
+            f"Mobile: {patient_mobile}\n"
+            f"Old: {self._format_date(old_date)} {self._format_time(old_time)}\n"
+            f"New: {self._format_date(new_date)} {self._format_time(new_time)}"
+        )
 
-        return self._send_sms_with_template(
+        return self._send_sms(
             doctor_phone,
+            body,
             NotificationType.DOCTOR_RESCHEDULE,
-            content_variables,
             async_send
         )
 
@@ -351,23 +288,22 @@ class NotificationService:
         appointment_time: time,
         async_send: bool = True
     ) -> SMSResult:
-        """Send cancellation notification SMS to doctor using Content Template."""
+        """Send cancellation notification SMS to doctor."""
         if not doctor_phone:
             logger.debug(f"Doctor {doctor_name} has no phone number, skipping SMS")
             return SMSResult(success=False, error="Doctor phone number not available")
 
-        # Template format: Appointment Cancelled! Patient: {{1}}, Mobile: {{2}}, Was: {{3}} {{4}}
-        content_variables = {
-            "1": patient_name,
-            "2": patient_mobile,
-            "3": self._format_date(appointment_date),
-            "4": self._format_time(appointment_time)
-        }
+        body = (
+            f"Appointment Cancelled!\n"
+            f"Patient: {patient_name}\n"
+            f"Mobile: {patient_mobile}\n"
+            f"Was: {self._format_date(appointment_date)} {self._format_time(appointment_time)}"
+        )
 
-        return self._send_sms_with_template(
+        return self._send_sms(
             doctor_phone,
+            body,
             NotificationType.DOCTOR_CANCEL,
-            content_variables,
             async_send
         )
 
@@ -385,7 +321,7 @@ class NotificationService:
         sms_opt_in: bool = True,
         async_send: bool = True
     ) -> SMSResult:
-        """Send booking confirmation SMS to patient using Content Template."""
+        """Send booking confirmation SMS to patient."""
         if not patient_mobile:
             logger.warning("Cannot send patient SMS: mobile number is empty")
             return SMSResult(success=False, error="Patient mobile number is empty")
@@ -394,20 +330,21 @@ class NotificationService:
             logger.debug(f"Patient {patient_name} has opted out of SMS notifications")
             return SMSResult(success=False, error="Patient opted out of SMS")
 
-        # Template format: Dear {{1}}, Appointment Confirmed! Doctor: Dr. {{2}} ({{3}}), Date: {{4}}, Time: {{5}}, Location: {{6}}
-        content_variables = {
-            "1": patient_name,
-            "2": doctor_name,
-            "3": doctor_specialization,
-            "4": self._format_date(appointment_date),
-            "5": self._format_time(appointment_time),
-            "6": clinic_address or settings.CLINIC_ADDRESS or "Contact clinic"
-        }
+        location = clinic_address or settings.CLINIC_ADDRESS or "Contact clinic for address"
 
-        return self._send_sms_with_template(
+        body = (
+            f"Dear {patient_name},\n"
+            f"Appointment Confirmed!\n"
+            f"Doctor: Dr. {doctor_name} ({doctor_specialization})\n"
+            f"Date: {self._format_date(appointment_date)}\n"
+            f"Time: {self._format_time(appointment_time)}\n"
+            f"Location: {location}"
+        )
+
+        return self._send_sms(
             patient_mobile,
+            body,
             NotificationType.PATIENT_BOOKING,
-            content_variables,
             async_send
         )
 
@@ -423,7 +360,7 @@ class NotificationService:
         sms_opt_in: bool = True,
         async_send: bool = True
     ) -> SMSResult:
-        """Send reschedule notification SMS to patient using Content Template."""
+        """Send reschedule notification SMS to patient."""
         if not patient_mobile:
             logger.warning("Cannot send patient SMS: mobile number is empty")
             return SMSResult(success=False, error="Patient mobile number is empty")
@@ -432,20 +369,21 @@ class NotificationService:
             logger.debug(f"Patient {patient_name} has opted out of SMS notifications")
             return SMSResult(success=False, error="Patient opted out of SMS")
 
-        # Template format: Dear {{1}}, Appointment Rescheduled. Doctor: Dr. {{2}} ({{3}}), New Date: {{4}}, New Time: {{5}}, Location: {{6}}
-        content_variables = {
-            "1": patient_name,
-            "2": doctor_name,
-            "3": doctor_specialization,
-            "4": self._format_date(new_date),
-            "5": self._format_time(new_time),
-            "6": clinic_address or settings.CLINIC_ADDRESS or "Contact clinic"
-        }
+        location = clinic_address or settings.CLINIC_ADDRESS or "Contact clinic for address"
 
-        return self._send_sms_with_template(
+        body = (
+            f"Dear {patient_name},\n"
+            f"Appointment Rescheduled.\n"
+            f"Doctor: Dr. {doctor_name} ({doctor_specialization})\n"
+            f"New Date: {self._format_date(new_date)}\n"
+            f"New Time: {self._format_time(new_time)}\n"
+            f"Location: {location}"
+        )
+
+        return self._send_sms(
             patient_mobile,
+            body,
             NotificationType.PATIENT_RESCHEDULE,
-            content_variables,
             async_send
         )
 
@@ -459,7 +397,7 @@ class NotificationService:
         sms_opt_in: bool = True,
         async_send: bool = True
     ) -> SMSResult:
-        """Send cancellation notification SMS to patient using Content Template."""
+        """Send cancellation notification SMS to patient."""
         if not patient_mobile:
             logger.warning("Cannot send patient SMS: mobile number is empty")
             return SMSResult(success=False, error="Patient mobile number is empty")
@@ -468,55 +406,20 @@ class NotificationService:
             logger.debug(f"Patient {patient_name} has opted out of SMS notifications")
             return SMSResult(success=False, error="Patient opted out of SMS")
 
-        # Template format: Dear {{1}}, Your appointment with Dr. {{2}} on {{3}} at {{4}} has been cancelled.
-        content_variables = {
-            "1": patient_name,
-            "2": doctor_name,
-            "3": self._format_date(appointment_date),
-            "4": self._format_time(appointment_time)
-        }
+        body = (
+            f"Dear {patient_name},\n"
+            f"Your appointment with Dr. {doctor_name} on "
+            f"{self._format_date(appointment_date)} at {self._format_time(appointment_time)} "
+            f"has been cancelled."
+        )
 
-        return self._send_sms_with_template(
+        return self._send_sms(
             patient_mobile,
+            body,
             NotificationType.PATIENT_CANCEL,
-            content_variables,
             async_send
         )
 
 
 # Singleton instance
 notification_service = NotificationService()
-
-
-# ==================== EMAIL NOTIFICATIONS (COMMENTED OUT FOR NOW) ====================
-# To enable email notifications, uncomment the following code and set EMAIL_NOTIFICATIONS_ENABLED=True
-#
-# import smtplib
-# from email.mime.text import MIMEText
-# from email.mime.multipart import MIMEMultipart
-#
-# # Add to __init__:
-# # self.email_enabled = settings.EMAIL_NOTIFICATIONS_ENABLED
-#
-# def send_doctor_booking_email(self, doctor_email, doctor_name, patient_name, patient_mobile, appointment_date, appointment_time, symptoms=None):
-#     if not self.email_enabled:
-#         return False
-#     subject = f"New Appointment: {patient_name}"
-#     html_content = f"<html><body><h2>New Appointment</h2><p>Patient: {patient_name}</p></body></html>"
-#     return self._send_email(doctor_email, subject, html_content)
-#
-# def _send_email(self, to_email, subject, html_content):
-#     try:
-#         msg = MIMEMultipart('alternative')
-#         msg['Subject'] = subject
-#         msg['From'] = settings.SMTP_FROM_EMAIL
-#         msg['To'] = to_email
-#         msg.attach(MIMEText(html_content, 'html'))
-#         with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT) as server:
-#             server.starttls()
-#             server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-#             server.send_message(msg)
-#         return True
-#     except Exception as e:
-#         logger.error(f"Failed to send email: {e}")
-#         return False

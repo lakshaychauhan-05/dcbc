@@ -117,7 +117,12 @@ class ChatService:
                 self.conversation_manager.update_conversation(
                     conversation_id=conversation_id,
                     state=ConversationState.INITIAL,
-                    context={"pending_action": None}
+                    context={
+                        "pending_action": None,
+                        "reschedule_in_progress": False,
+                        "reschedule_date": None,
+                        "reschedule_time": None
+                    }
                 )
 
                 # Generate helpful response based on what was being cancelled
@@ -342,6 +347,25 @@ class ChatService:
     ) -> str:
         """Generate response based on classified intent."""
 
+        # Check if we're in an active reschedule flow (have reschedule_in_progress flag and missing date/time)
+        # If so, continue reschedule regardless of new intent classification
+        conversation = self.conversation_manager.get_conversation(conversation_id)
+        if conversation:
+            ctx = conversation.context
+            reschedule_in_progress = ctx.get("reschedule_in_progress", False)
+            missing_reschedule_date = not ctx.get("reschedule_date")
+            missing_reschedule_time = not ctx.get("reschedule_time")
+
+            # If we're in a reschedule flow and still missing date/time, continue reschedule
+            if reschedule_in_progress and (missing_reschedule_date or missing_reschedule_time):
+                # Don't hijack if user explicitly wants to cancel or do other actions
+                if intent.intent not in (IntentType.CANCEL_APPOINTMENT, IntentType.GET_DOCTOR_INFO,
+                                         IntentType.CHECK_AVAILABILITY, IntentType.GET_MY_APPOINTMENTS):
+                    # Check if message contains date or time entities
+                    has_date_time = any(e.type in (EntityType.DATE, EntityType.TIME) for e in intent.entities)
+                    if has_date_time:
+                        return await self._handle_reschedule_intent(message, intent, conversation_id)
+
         if intent.intent == IntentType.BOOK_APPOINTMENT:
             return await self._handle_booking_intent(message, intent, conversation_id, doctor_data)
 
@@ -520,6 +544,35 @@ class ChatService:
         # Check what information we have and what's missing
         missing_info = self._get_missing_booking_info(booking_context)
 
+        # Handle combined name+phone input when both are missing
+        # User might respond with "savi, 9634927054" or "savi 9634927054"
+        if (not booking_context.get("patient_name") and not booking_context.get("patient_phone")):
+            extracted_name, extracted_phone = self._extract_name_and_phone_combined(message)
+            if extracted_name and extracted_phone:
+                booking_context["patient_name"] = extracted_name
+                booking_context["patient_phone"] = extracted_phone
+                self.conversation_manager.update_booking_context(
+                    conversation_id,
+                    {"patient_name": extracted_name, "patient_phone": extracted_phone}
+                )
+                missing_info = self._get_missing_booking_info(booking_context)
+            elif extracted_phone and not extracted_name:
+                # Got phone but not name - extract name more flexibly
+                booking_context["patient_phone"] = extracted_phone
+                potential_name = self._extract_name_flexible(message, extracted_phone)
+                if potential_name:
+                    booking_context["patient_name"] = potential_name
+                    self.conversation_manager.update_booking_context(
+                        conversation_id,
+                        {"patient_name": potential_name, "patient_phone": extracted_phone}
+                    )
+                else:
+                    self.conversation_manager.update_booking_context(
+                        conversation_id,
+                        {"patient_phone": extracted_phone}
+                    )
+                missing_info = self._get_missing_booking_info(booking_context)
+
         if missing_info and missing_info[0] == "your phone number":
             if not booking_context.get("patient_phone"):
                 normalized_phone = self._normalize_phone_input(message)
@@ -552,15 +605,51 @@ class ChatService:
 
     async def _handle_reschedule_intent(self, message: str, intent: Any, conversation_id: str) -> str:
         """Handle appointment rescheduling intent."""
-        appointment_id = self._extract_appointment_id(message)
-        reschedule_context = {}
-        if appointment_id:
-            reschedule_context["appointment_id"] = appointment_id
+        # Get existing conversation context (may have appointment_id from recent booking, or partial reschedule info)
+        conversation = self.conversation_manager.get_conversation(conversation_id)
+        existing_context = conversation.context if conversation else {}
 
-        # Extract date/time entities for rescheduling
-        reschedule_context.update(self._extract_reschedule_details(intent.entities))
+        # Build reschedule context, starting with existing values
+        reschedule_context = {}
+
+        # Appointment ID: prefer from existing context (from last booking or previous messages)
+        existing_appointment_id = existing_context.get("appointment_id") or existing_context.get("last_appointment_id")
+        if existing_appointment_id:
+            reschedule_context["appointment_id"] = existing_appointment_id
+
+        # Check if user provided appointment_id in this message (override existing)
+        message_appointment_id = self._extract_appointment_id(message)
+        if message_appointment_id:
+            reschedule_context["appointment_id"] = message_appointment_id
+
+        # Reschedule date: use existing if available
+        if existing_context.get("reschedule_date"):
+            reschedule_context["reschedule_date"] = existing_context.get("reschedule_date")
+
+        # Reschedule time: use existing if available
+        if existing_context.get("reschedule_time"):
+            reschedule_context["reschedule_time"] = existing_context.get("reschedule_time")
+
+        # Extract date/time entities from current message (override existing)
+        new_details = self._extract_reschedule_details(intent.entities)
+        reschedule_context.update(new_details)
+
+        # Fallback: try to extract date/time directly from message text if not found in entities
+        if not reschedule_context.get("reschedule_date"):
+            fallback_date = self._extract_date_from_text(message)
+            if fallback_date:
+                reschedule_context["reschedule_date"] = fallback_date
+
+        if not reschedule_context.get("reschedule_time"):
+            fallback_time = self._extract_time_from_text(message)
+            if fallback_time:
+                reschedule_context["reschedule_time"] = fallback_time
+
+        # Store merged context and mark that we're in a reschedule flow
+        reschedule_context["reschedule_in_progress"] = True
         self.conversation_manager.update_booking_context(conversation_id, reschedule_context)
 
+        # Check what's still missing
         missing_info = []
         if not reschedule_context.get("appointment_id"):
             missing_info.append("your appointment ID")
@@ -572,10 +661,11 @@ class ChatService:
         if missing_info:
             return f"I can help reschedule that. I still need {', '.join(missing_info)}."
 
+        # All info collected - move to confirmation (clear the in_progress flag)
         self.conversation_manager.update_conversation(
             conversation_id=conversation_id,
             state=ConversationState.CONFIRMING_BOOKING,
-            context={"pending_action": "reschedule"}
+            context={"pending_action": "reschedule", "reschedule_in_progress": False}
         )
         return (
             "Please confirm: I will reschedule your appointment to "
@@ -585,7 +675,17 @@ class ChatService:
 
     async def _handle_cancel_intent(self, message: str, intent: Any, conversation_id: str) -> str:
         """Handle appointment cancellation intent."""
+        # Get existing conversation context (may have appointment_id from recent booking)
+        conversation = self.conversation_manager.get_conversation(conversation_id)
+        existing_context = conversation.context if conversation else {}
+
+        # Check if user provided appointment_id in this message
         appointment_id = self._extract_appointment_id(message)
+
+        # If not in message, check existing context (from last booking)
+        if not appointment_id:
+            appointment_id = existing_context.get("appointment_id") or existing_context.get("last_appointment_id")
+
         if appointment_id:
             self.conversation_manager.update_booking_context(
                 conversation_id,
@@ -1409,6 +1509,124 @@ class ChatService:
             if any(word in potential_name.lower() for word in symptom_words):
                 return None
             return potential_name
+        return None
+
+    def _extract_name_and_phone_combined(self, message: str) -> tuple:
+        """Extract name and phone from combined formats like 'savi, 9634927054' or 'savi 9634927054'.
+
+        Returns tuple of (name, phone) where either can be None if not found.
+        """
+        if not message:
+            return None, None
+
+        # First extract phone number
+        phone = self._normalize_phone_input(message)
+        if not phone:
+            return None, None
+
+        # Common words to exclude from names
+        exclude_words = {
+            "my", "name", "is", "phone", "number", "mobile", "call", "me", "at",
+            "and", "the", "i", "am", "yes", "no", "ok", "okay", "hi", "hello",
+            "book", "appointment", "doctor", "with"
+        }
+
+        # Find where phone number starts in message
+        # Match various phone formats
+        phone_patterns = [
+            r'\+91[\s\-]?\d{10}',
+            r'\b91[\s\-]?\d{10}\b',
+            r'\b0?\d{10}\b',
+            r'\b\d{3}[\s\-]\d{3}[\s\-]\d{4}\b',
+            r'\b\d{5}[\s\-]\d{5}\b',
+        ]
+
+        phone_start = len(message)
+        for pattern in phone_patterns:
+            match = re.search(pattern, message)
+            if match:
+                phone_start = min(phone_start, match.start())
+                break
+
+        # Get text before phone number
+        text_before_phone = message[:phone_start].strip()
+
+        # Clean up the text - remove common prefixes and separators
+        text_before_phone = re.sub(r'^(my name is|i am|name:|name)\s*', '', text_before_phone, flags=re.IGNORECASE)
+        text_before_phone = text_before_phone.rstrip(',').rstrip('-').strip()
+
+        if not text_before_phone:
+            return None, phone
+
+        # Extract potential name (first word or words before phone)
+        words = text_before_phone.split()
+        name_words = []
+        for word in words:
+            word_clean = word.lower().strip('.,!?')
+            if word_clean not in exclude_words and len(word_clean) > 1:
+                # Check if it looks like a name (starts with letter, mostly letters)
+                if re.match(r'^[a-zA-Z][a-zA-Z\s\'.-]*$', word):
+                    name_words.append(word)
+
+        if name_words:
+            name = ' '.join(name_words).strip()
+            # Title case the name
+            name = ' '.join(w.capitalize() for w in name.split())
+            return name, phone
+
+        return None, phone
+
+    def _extract_name_flexible(self, message: str, phone_to_exclude: str = None) -> Optional[str]:
+        """Extract name more flexibly when we know we're looking for a name.
+
+        Used when phone is already extracted and we need to find the name part.
+        """
+        if not message:
+            return None
+
+        # Remove phone number from message if provided
+        text = message
+        if phone_to_exclude:
+            # Remove various formats of the phone
+            digits = re.sub(r'\D', '', phone_to_exclude)
+            if len(digits) >= 10:
+                core_digits = digits[-10:]  # Last 10 digits
+                # Remove the phone number in various formats
+                patterns = [
+                    rf'\+?91[\s\-]?{core_digits}',
+                    rf'\b0?{core_digits}\b',
+                    rf'{core_digits[:3]}[\s\-]?{core_digits[3:6]}[\s\-]?{core_digits[6:]}',
+                ]
+                for pattern in patterns:
+                    text = re.sub(pattern, '', text)
+
+        # Clean up separators and common words
+        text = text.strip().rstrip(',').rstrip('-').strip()
+        text = re.sub(r'^(my name is|i am|name:|name)\s*', '', text, flags=re.IGNORECASE)
+        text = text.strip()
+
+        if not text:
+            return None
+
+        # Exclude words
+        exclude_words = {
+            "my", "name", "is", "phone", "number", "mobile", "call", "me", "at",
+            "and", "the", "yes", "no", "ok", "okay", "hi", "hello"
+        }
+
+        words = text.split()
+        name_words = []
+        for word in words:
+            word_clean = word.lower().strip('.,!?')
+            if word_clean not in exclude_words and len(word_clean) > 1:
+                if re.match(r'^[a-zA-Z][a-zA-Z\'.-]*$', word):
+                    name_words.append(word)
+
+        if name_words:
+            name = ' '.join(name_words).strip()
+            name = ' '.join(w.capitalize() for w in name.split())
+            return name
+
         return None
 
     def _is_likely_symptom(self, value: str) -> bool:
@@ -2612,19 +2830,28 @@ class ChatService:
             if "next week" in normalized:
                 return today + timedelta(days=7)
 
-            parsed_date = date_parser.parse(value, fuzzy=True).date()
-            # If parsed date is in the past and no year was specified, assume next year
-            if parsed_date < today and parsed_date.year == today.year:
-                # Check if user said "next" or similar
-                if "next" in normalized:
-                    parsed_date = date_parser.parse(value, fuzzy=True, default=datetime.now(IST)).date()
-                else:
-                    # Try parsing with next year
-                    try:
-                        parsed_date = date_parser.parse(value, fuzzy=True, default=datetime(today.year + 1, 1, 1)).date()
-                    except Exception as e:
-                        logger.debug(f"Failed to parse date '{value}' with next year fallback: {e}")
-                        pass
+            # Check if year is explicitly mentioned in the input
+            year_explicitly_mentioned = bool(re.search(r'\b20\d{2}\b|\b\d{4}\b', value))
+
+            # Parse with current year as default to avoid old year defaults
+            default_datetime = datetime(today.year, today.month, today.day, tzinfo=IST)
+            parsed_date = date_parser.parse(value, fuzzy=True, default=default_datetime).date()
+
+            # If parsed date is in the past and year wasn't explicitly mentioned,
+            # try to adjust to current or next year
+            if parsed_date < today and not year_explicitly_mentioned:
+                # First try current year
+                try:
+                    current_year_date = date(today.year, parsed_date.month, parsed_date.day)
+                    if current_year_date >= today:
+                        parsed_date = current_year_date
+                    else:
+                        # Date already passed this year, use next year
+                        parsed_date = date(today.year + 1, parsed_date.month, parsed_date.day)
+                except ValueError:
+                    # Handle edge cases like Feb 29 in non-leap years
+                    pass
+
             return parsed_date
         except Exception as e:
             logger.warning(f"Failed to parse date '{value}': {e}")
@@ -2816,17 +3043,22 @@ class ChatService:
                 )
                 return user_message
 
+            appointment_id = response.get("id") if isinstance(response, dict) else None
+
+            # Update conversation state but KEEP the appointment_id for potential reschedule/cancel
             self.conversation_manager.update_conversation(
                 conversation_id=conversation_id,
                 state=ConversationState.COMPLETED,
                 context={
                     "pending_action": None,
-                    # Clear booking-specific context to avoid stale doctor mismatches
-                    "appointment_id": None,
+                    # Keep appointment_id for reschedule/cancel operations
+                    "last_appointment_id": appointment_id,
+                    "appointment_id": appointment_id,
+                    # Keep doctor info for reschedule context
+                    "last_doctor_name": booking_context.get("doctor_name"),
+                    "last_doctor_email": booking_context.get("doctor_email"),
+                    # Clear other booking-specific context
                     "selected_doctor_email": None,
-                    "doctor_email": None,
-                    "doctor_name": None,
-                    "specialization": None,
                     "date": None,
                     "time": None,
                     "patient_name": None,
@@ -2838,7 +3070,6 @@ class ChatService:
                     "reschedule_time": None
                 }
             )
-            appointment_id = response.get("id") if isinstance(response, dict) else None
             calendar_event_id = response.get("google_calendar_event_id") if isinstance(response, dict) else None
             if not appointment_id:
                 logger.error("Booking response missing appointment id")
@@ -2935,10 +3166,16 @@ class ChatService:
                 logger.error(f"Reschedule failed for {appointment_id}: {response.get('error')}")
                 return "I couldn't reschedule the appointment because that time slot is not available. Please try a different time."
 
+            # Clear reschedule context after successful reschedule
             self.conversation_manager.update_conversation(
                 conversation_id=conversation_id,
                 state=ConversationState.COMPLETED,
-                context={"pending_action": None}
+                context={
+                    "pending_action": None,
+                    "reschedule_in_progress": False,
+                    "reschedule_date": None,
+                    "reschedule_time": None
+                }
             )
             return "Appointment rescheduled successfully!"
         except Exception as e:

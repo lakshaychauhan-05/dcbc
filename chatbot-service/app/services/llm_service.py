@@ -79,10 +79,15 @@ Return only a JSON object with the following structure:
 
     def _create_entity_prompt(self) -> str:
         """Create prompt template for entity extraction."""
-        template = """Extract relevant entities from the user's message for appointment booking.
+        from datetime import datetime
+        current_year = datetime.now().year
+
+        template = f"""Extract relevant entities from the user's message for appointment booking.
+
+IMPORTANT: The current year is {current_year}. When extracting dates without an explicit year (like "10th feb", "march 5"), always assume the current year {current_year} or the next occurrence of that date.
 
 Available entity types:
-- date: Dates (e.g., "tomorrow", "next Monday", "2024-01-15")
+- date: Dates (e.g., "tomorrow", "next Monday", "{current_year}-02-15", "10th feb" -> "{current_year}-02-10")
 - time: Times (e.g., "2 PM", "14:00", "morning")
 - doctor_name: Doctor names (e.g., "Dr. Smith", "Dr. Sarah Johnson")
 - specialization: Medical specialties (e.g., "cardiology", "dermatology", "skin specialist")
@@ -100,9 +105,9 @@ CRITICAL GUIDELINES for distinguishing entities:
 6. If user mentions a specialty earlier (e.g., "dermatology" or "skin") and continues the conversation, do NOT change it to a different specialty unless explicitly requested.
 
 Conversation history (most recent last):
-{history}
+{{history}}
 
-User message: {message}
+User message: {{message}}
 
 Return a JSON array of extracted entities:
 [
