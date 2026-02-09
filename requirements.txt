@@ -25,5 +25,8 @@ python-jose[cryptography]==3.3.0
 # Environment variables
 python-dotenv==1.0.1
 
+# SMS notifications
+twilio==9.0.0
+
 # Logging (built-in, but explicit for clarity)
 # Python 3.11 includes logging module

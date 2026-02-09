@@ -78,6 +78,24 @@ class Settings(BaseSettings):
     # Timezone
     DEFAULT_TIMEZONE: str = "Asia/Kolkata"
 
+    # Email Notifications (for doctors)
+    EMAIL_NOTIFICATIONS_ENABLED: bool = False
+    SMTP_SERVER: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_FROM_EMAIL: Optional[str] = None
+
+    # SMS Notifications (for patients via Twilio)
+    SMS_NOTIFICATIONS_ENABLED: bool = False
+    TWILIO_ACCOUNT_SID: Optional[str] = None
+    TWILIO_AUTH_TOKEN: Optional[str] = None
+    TWILIO_PHONE_NUMBER: Optional[str] = None
+
+    # Clinic Info (used in notifications)
+    CLINIC_NAME: str = "Medical Clinic"
+    CLINIC_ADDRESS: Optional[str] = None
+
     @field_validator("DATABASE_URL")
     @classmethod
     def normalize_database_url(cls, value: str) -> str:

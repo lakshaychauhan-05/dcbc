@@ -21,6 +21,7 @@ from app.services.availability_service import AvailabilityService
 from app.services.calendar_sync_queue import calendar_sync_queue
 from app.services.google_calendar_service import GoogleCalendarService
 from app.services.rag_sync_service import RAGSyncService
+from app.services.notification_service import notification_service
 from app.utils.datetime_utils import to_utc, now_ist
 
 logger = logging.getLogger(__name__)
@@ -183,6 +184,28 @@ class BookingService:
             calendar_sync_queue.enqueue_create(apt_id_str)
             calendar_sync_queue.trigger_immediate_sync(apt_id_str, "CREATE")
 
+            # Send notifications (non-blocking, failures don't affect booking)
+            try:
+                notification_service.send_doctor_booking_email(
+                    doctor_email=doctor.email,
+                    doctor_name=doctor.name,
+                    patient_name=patient.name,
+                    patient_mobile=patient.mobile_number,
+                    appointment_date=appointment.date,
+                    appointment_time=appointment.start_time,
+                    symptoms=booking_data.symptoms
+                )
+                notification_service.send_patient_booking_sms(
+                    patient_mobile=patient.mobile_number,
+                    patient_name=patient.name,
+                    doctor_name=doctor.name,
+                    appointment_date=appointment.date,
+                    appointment_time=appointment.start_time,
+                    clinic_address=doctor.clinic_address
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send booking notifications: {e}")
+
             logger.info(f"Successfully booked appointment {appointment.id}")
             return appointment
             
@@ -265,6 +288,8 @@ class BookingService:
             raise ValueError(f"Patient {appointment.patient_id} not found")
         
         old_event_id = appointment.google_calendar_event_id
+        old_date = appointment.date
+        old_start_time = appointment.start_time
         appointment_tz = doctor.timezone or settings.DEFAULT_TIMEZONE
         start_at_utc = to_utc(reschedule_data.new_date, reschedule_data.new_start_time, appointment_tz)
         end_at_utc = to_utc(reschedule_data.new_date, reschedule_data.new_end_time, appointment_tz)
@@ -339,9 +364,32 @@ class BookingService:
                 db.commit()
                 db.refresh(appointment)
 
+            # Send notifications (non-blocking, failures don't affect reschedule)
+            try:
+                notification_service.send_doctor_reschedule_email(
+                    doctor_email=doctor.email,
+                    doctor_name=doctor.name,
+                    patient_name=patient.name,
+                    patient_mobile=patient.mobile_number,
+                    old_date=old_date,
+                    old_time=old_start_time,
+                    new_date=reschedule_data.new_date,
+                    new_time=reschedule_data.new_start_time
+                )
+                notification_service.send_patient_reschedule_sms(
+                    patient_mobile=patient.mobile_number,
+                    patient_name=patient.name,
+                    doctor_name=doctor.name,
+                    new_date=reschedule_data.new_date,
+                    new_time=reschedule_data.new_start_time,
+                    clinic_address=doctor.clinic_address
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send reschedule notifications: {e}")
+
             logger.info(f"Successfully rescheduled appointment {appointment_id}")
             return appointment
-            
+
         except Exception as e:
             db.rollback()
             logger.error(f"Error rescheduling appointment: {str(e)}")
@@ -381,9 +429,16 @@ class BookingService:
         doctor = db.query(Doctor).filter(Doctor.email == appointment.doctor_email).first()  # Changed to email
         if not doctor:
             raise ValueError(f"Doctor with email '{appointment.doctor_email}' not found")
-        
+
+        # Get patient for notifications
+        patient = db.query(Patient).filter(Patient.id == appointment.patient_id).first()
+
+        # Store appointment details for notifications before any changes
+        appointment_date = appointment.date
+        appointment_time = appointment.start_time
+
         event_id = appointment.google_calendar_event_id
-        
+
         try:
             # Mark as cancelled in DB (idempotent if already cancelled)
             if appointment.status != AppointmentStatus.CANCELLED:
@@ -420,9 +475,30 @@ class BookingService:
                 db.commit()
                 db.refresh(appointment)
 
+            # Send notifications (non-blocking, failures don't affect cancellation)
+            if patient:
+                try:
+                    notification_service.send_doctor_cancellation_email(
+                        doctor_email=doctor.email,
+                        doctor_name=doctor.name,
+                        patient_name=patient.name,
+                        patient_mobile=patient.mobile_number,
+                        appointment_date=appointment_date,
+                        appointment_time=appointment_time
+                    )
+                    notification_service.send_patient_cancellation_sms(
+                        patient_mobile=patient.mobile_number,
+                        patient_name=patient.name,
+                        doctor_name=doctor.name,
+                        appointment_date=appointment_date,
+                        appointment_time=appointment_time
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to send cancellation notifications: {e}")
+
             logger.info(f"Successfully cancelled appointment {appointment_id}")
             return appointment
-            
+
         except Exception as e:
             db.rollback()
             logger.error(f"Error cancelling appointment: {str(e)}")
