@@ -1,9 +1,10 @@
 """
 Notification Service - handles SMS notifications for doctors and patients.
-Uses Twilio for SMS delivery.
+Uses Twilio Content Templates API for DLT compliance in India.
 
 Email notifications are commented out for now - can be enabled later.
 """
+import json
 import logging
 from typing import Optional
 from datetime import date, time
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class NotificationService:
-    """Service for sending SMS notifications to doctors and patients."""
+    """Service for sending SMS notifications to doctors and patients using Twilio Content Templates."""
 
     def __init__(self):
         self.sms_enabled = settings.SMS_NOTIFICATIONS_ENABLED
@@ -64,8 +65,13 @@ class NotificationService:
         """Format date for display."""
         return d.strftime("%B %d, %Y")
 
-    def _send_sms(self, to_number: str, message: str) -> bool:
-        """Send an SMS using Twilio."""
+    def _send_sms_with_template(
+        self,
+        to_number: str,
+        template_sid: str,
+        content_variables: dict
+    ) -> bool:
+        """Send an SMS using Twilio Content Templates API."""
         if not self.sms_enabled or not self.twilio_client:
             logger.debug(f"SMS disabled, skipping message to {to_number}")
             return False
@@ -74,19 +80,25 @@ class NotificationService:
             logger.warning("Cannot send SMS: phone number is empty")
             return False
 
+        if not template_sid:
+            logger.warning("Cannot send SMS: template SID is not configured")
+            return False
+
         try:
             normalized_number = self._normalize_phone_number(to_number)
             if not normalized_number:
                 logger.warning(f"Cannot normalize phone number: {to_number}")
                 return False
 
+            # Send SMS using Content Templates API
             self.twilio_client.messages.create(
-                body=message,
                 from_=settings.TWILIO_PHONE_NUMBER,
-                to=normalized_number
+                to=normalized_number,
+                content_sid=template_sid,
+                content_variables=json.dumps(content_variables)
             )
 
-            logger.info(f"SMS sent successfully to {normalized_number}")
+            logger.info(f"SMS sent successfully to {normalized_number} using template {template_sid}")
             return True
 
         except Exception as e:
@@ -105,24 +117,27 @@ class NotificationService:
         appointment_time: time,
         symptoms: Optional[str] = None
     ) -> bool:
-        """Send booking confirmation SMS to doctor."""
+        """Send booking confirmation SMS to doctor using Content Template."""
         if not doctor_phone:
             logger.debug(f"Doctor {doctor_name} has no phone number, skipping SMS")
             return False
 
-        symptom_info = f"\nSymptoms: {symptoms}" if symptoms else ""
+        template_sid = settings.TWILIO_TEMPLATE_DOCTOR_BOOKING
+        if not template_sid:
+            logger.warning("Doctor booking template not configured")
+            return False
 
-        message = (
-            f"New Appointment!\n"
-            f"Patient: {patient_name}\n"
-            f"Mobile: {patient_mobile}\n"
-            f"Date: {self._format_date(appointment_date)}\n"
-            f"Time: {self._format_time(appointment_time)}"
-            f"{symptom_info}\n"
-            f"- {settings.CLINIC_NAME}"
-        )
+        # Content variables must match the template placeholders
+        # Template format: New Appointment! Patient: {{1}}, Mobile: {{2}}, Date: {{3}}, Time: {{4}}, Symptoms: {{5}}
+        content_variables = {
+            "1": patient_name,
+            "2": patient_mobile,
+            "3": self._format_date(appointment_date),
+            "4": self._format_time(appointment_time),
+            "5": symptoms or "Not specified"
+        }
 
-        return self._send_sms(doctor_phone, message)
+        return self._send_sms_with_template(doctor_phone, template_sid, content_variables)
 
     def send_doctor_reschedule_sms(
         self,
@@ -135,21 +150,27 @@ class NotificationService:
         new_date: date,
         new_time: time
     ) -> bool:
-        """Send reschedule notification SMS to doctor."""
+        """Send reschedule notification SMS to doctor using Content Template."""
         if not doctor_phone:
             logger.debug(f"Doctor {doctor_name} has no phone number, skipping SMS")
             return False
 
-        message = (
-            f"Appointment Rescheduled!\n"
-            f"Patient: {patient_name}\n"
-            f"Mobile: {patient_mobile}\n"
-            f"Old: {self._format_date(old_date)} {self._format_time(old_time)}\n"
-            f"New: {self._format_date(new_date)} {self._format_time(new_time)}\n"
-            f"- {settings.CLINIC_NAME}"
-        )
+        template_sid = settings.TWILIO_TEMPLATE_DOCTOR_RESCHEDULE
+        if not template_sid:
+            logger.warning("Doctor reschedule template not configured")
+            return False
 
-        return self._send_sms(doctor_phone, message)
+        # Template format: Appointment Rescheduled! Patient: {{1}}, Mobile: {{2}}, Old: {{3}} {{4}}, New: {{5}} {{6}}
+        content_variables = {
+            "1": patient_name,
+            "2": patient_mobile,
+            "3": self._format_date(old_date),
+            "4": self._format_time(old_time),
+            "5": self._format_date(new_date),
+            "6": self._format_time(new_time)
+        }
+
+        return self._send_sms_with_template(doctor_phone, template_sid, content_variables)
 
     def send_doctor_cancellation_sms(
         self,
@@ -160,21 +181,25 @@ class NotificationService:
         appointment_date: date,
         appointment_time: time
     ) -> bool:
-        """Send cancellation notification SMS to doctor."""
+        """Send cancellation notification SMS to doctor using Content Template."""
         if not doctor_phone:
             logger.debug(f"Doctor {doctor_name} has no phone number, skipping SMS")
             return False
 
-        message = (
-            f"Appointment Cancelled!\n"
-            f"Patient: {patient_name}\n"
-            f"Mobile: {patient_mobile}\n"
-            f"Was: {self._format_date(appointment_date)} {self._format_time(appointment_time)}\n"
-            f"Slot now available.\n"
-            f"- {settings.CLINIC_NAME}"
-        )
+        template_sid = settings.TWILIO_TEMPLATE_DOCTOR_CANCEL
+        if not template_sid:
+            logger.warning("Doctor cancellation template not configured")
+            return False
 
-        return self._send_sms(doctor_phone, message)
+        # Template format: Appointment Cancelled! Patient: {{1}}, Mobile: {{2}}, Was: {{3}} {{4}}
+        content_variables = {
+            "1": patient_name,
+            "2": patient_mobile,
+            "3": self._format_date(appointment_date),
+            "4": self._format_time(appointment_time)
+        }
+
+        return self._send_sms_with_template(doctor_phone, template_sid, content_variables)
 
     # ==================== PATIENT SMS NOTIFICATIONS ====================
 
@@ -188,24 +213,27 @@ class NotificationService:
         appointment_time: time,
         clinic_address: Optional[str] = None
     ) -> bool:
-        """Send booking confirmation SMS to patient."""
+        """Send booking confirmation SMS to patient using Content Template."""
         if not patient_mobile:
             logger.warning("Cannot send patient SMS: mobile number is empty")
             return False
 
-        location_info = f"\nLocation: {clinic_address}" if clinic_address else ""
+        template_sid = settings.TWILIO_TEMPLATE_PATIENT_BOOKING
+        if not template_sid:
+            logger.warning("Patient booking template not configured")
+            return False
 
-        message = (
-            f"Dear {patient_name},\n"
-            f"Appointment Confirmed!\n"
-            f"Doctor: Dr. {doctor_name} ({doctor_specialization})\n"
-            f"Date: {self._format_date(appointment_date)}\n"
-            f"Time: {self._format_time(appointment_time)}"
-            f"{location_info}\n"
-            f"- {settings.CLINIC_NAME}"
-        )
+        # Template format: Dear {{1}}, Appointment Confirmed! Doctor: Dr. {{2}} ({{3}}), Date: {{4}}, Time: {{5}}, Location: {{6}}
+        content_variables = {
+            "1": patient_name,
+            "2": doctor_name,
+            "3": doctor_specialization,
+            "4": self._format_date(appointment_date),
+            "5": self._format_time(appointment_time),
+            "6": clinic_address or settings.CLINIC_ADDRESS or "Contact clinic"
+        }
 
-        return self._send_sms(patient_mobile, message)
+        return self._send_sms_with_template(patient_mobile, template_sid, content_variables)
 
     def send_patient_reschedule_sms(
         self,
@@ -217,24 +245,27 @@ class NotificationService:
         new_time: time,
         clinic_address: Optional[str] = None
     ) -> bool:
-        """Send reschedule notification SMS to patient."""
+        """Send reschedule notification SMS to patient using Content Template."""
         if not patient_mobile:
             logger.warning("Cannot send patient SMS: mobile number is empty")
             return False
 
-        location_info = f"\nLocation: {clinic_address}" if clinic_address else ""
+        template_sid = settings.TWILIO_TEMPLATE_PATIENT_RESCHEDULE
+        if not template_sid:
+            logger.warning("Patient reschedule template not configured")
+            return False
 
-        message = (
-            f"Dear {patient_name},\n"
-            f"Appointment Rescheduled.\n"
-            f"Doctor: Dr. {doctor_name} ({doctor_specialization})\n"
-            f"New Date: {self._format_date(new_date)}\n"
-            f"New Time: {self._format_time(new_time)}"
-            f"{location_info}\n"
-            f"- {settings.CLINIC_NAME}"
-        )
+        # Template format: Dear {{1}}, Appointment Rescheduled. Doctor: Dr. {{2}} ({{3}}), New Date: {{4}}, New Time: {{5}}, Location: {{6}}
+        content_variables = {
+            "1": patient_name,
+            "2": doctor_name,
+            "3": doctor_specialization,
+            "4": self._format_date(new_date),
+            "5": self._format_time(new_time),
+            "6": clinic_address or settings.CLINIC_ADDRESS or "Contact clinic"
+        }
 
-        return self._send_sms(patient_mobile, message)
+        return self._send_sms_with_template(patient_mobile, template_sid, content_variables)
 
     def send_patient_cancellation_sms(
         self,
@@ -244,21 +275,25 @@ class NotificationService:
         appointment_date: date,
         appointment_time: time
     ) -> bool:
-        """Send cancellation notification SMS to patient."""
+        """Send cancellation notification SMS to patient using Content Template."""
         if not patient_mobile:
             logger.warning("Cannot send patient SMS: mobile number is empty")
             return False
 
-        message = (
-            f"Dear {patient_name},\n"
-            f"Your appointment with Dr. {doctor_name} on "
-            f"{self._format_date(appointment_date)} at {self._format_time(appointment_time)} "
-            f"has been cancelled.\n"
-            f"Please contact us to reschedule.\n"
-            f"- {settings.CLINIC_NAME}"
-        )
+        template_sid = settings.TWILIO_TEMPLATE_PATIENT_CANCEL
+        if not template_sid:
+            logger.warning("Patient cancellation template not configured")
+            return False
 
-        return self._send_sms(patient_mobile, message)
+        # Template format: Dear {{1}}, Your appointment with Dr. {{2}} on {{3}} at {{4}} has been cancelled.
+        content_variables = {
+            "1": patient_name,
+            "2": doctor_name,
+            "3": self._format_date(appointment_date),
+            "4": self._format_time(appointment_time)
+        }
+
+        return self._send_sms_with_template(patient_mobile, template_sid, content_variables)
 
 
 # Singleton instance

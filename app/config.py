@@ -84,6 +84,14 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: Optional[str] = None
     TWILIO_PHONE_NUMBER: Optional[str] = None
 
+    # Twilio Content Template IDs (for DLT compliance in India)
+    TWILIO_TEMPLATE_DOCTOR_BOOKING: Optional[str] = None
+    TWILIO_TEMPLATE_DOCTOR_RESCHEDULE: Optional[str] = None
+    TWILIO_TEMPLATE_DOCTOR_CANCEL: Optional[str] = None
+    TWILIO_TEMPLATE_PATIENT_BOOKING: Optional[str] = None
+    TWILIO_TEMPLATE_PATIENT_RESCHEDULE: Optional[str] = None
+    TWILIO_TEMPLATE_PATIENT_CANCEL: Optional[str] = None
+
     # Clinic Info (used in notifications)
     CLINIC_NAME: str = "Medical Clinic"
     CLINIC_ADDRESS: Optional[str] = None
