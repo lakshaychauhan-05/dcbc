@@ -184,10 +184,11 @@ class BookingService:
             calendar_sync_queue.enqueue_create(apt_id_str)
             calendar_sync_queue.trigger_immediate_sync(apt_id_str, "CREATE")
 
-            # Send notifications (non-blocking, failures don't affect booking)
+            # Send SMS notifications to both doctor and patient (non-blocking)
             try:
-                notification_service.send_doctor_booking_email(
-                    doctor_email=doctor.email,
+                # Doctor SMS notification
+                notification_service.send_doctor_booking_sms(
+                    doctor_phone=doctor.phone_number,
                     doctor_name=doctor.name,
                     patient_name=patient.name,
                     patient_mobile=patient.mobile_number,
@@ -195,10 +196,12 @@ class BookingService:
                     appointment_time=appointment.start_time,
                     symptoms=booking_data.symptoms
                 )
+                # Patient SMS notification
                 notification_service.send_patient_booking_sms(
                     patient_mobile=patient.mobile_number,
                     patient_name=patient.name,
                     doctor_name=doctor.name,
+                    doctor_specialization=doctor.specialization,
                     appointment_date=appointment.date,
                     appointment_time=appointment.start_time,
                     clinic_address=doctor.clinic.address if doctor.clinic else settings.CLINIC_ADDRESS
@@ -364,10 +367,11 @@ class BookingService:
                 db.commit()
                 db.refresh(appointment)
 
-            # Send notifications (non-blocking, failures don't affect reschedule)
+            # Send SMS notifications to both doctor and patient (non-blocking)
             try:
-                notification_service.send_doctor_reschedule_email(
-                    doctor_email=doctor.email,
+                # Doctor SMS notification
+                notification_service.send_doctor_reschedule_sms(
+                    doctor_phone=doctor.phone_number,
                     doctor_name=doctor.name,
                     patient_name=patient.name,
                     patient_mobile=patient.mobile_number,
@@ -376,10 +380,12 @@ class BookingService:
                     new_date=reschedule_data.new_date,
                     new_time=reschedule_data.new_start_time
                 )
+                # Patient SMS notification
                 notification_service.send_patient_reschedule_sms(
                     patient_mobile=patient.mobile_number,
                     patient_name=patient.name,
                     doctor_name=doctor.name,
+                    doctor_specialization=doctor.specialization,
                     new_date=reschedule_data.new_date,
                     new_time=reschedule_data.new_start_time,
                     clinic_address=doctor.clinic.address if doctor.clinic else settings.CLINIC_ADDRESS
@@ -475,17 +481,19 @@ class BookingService:
                 db.commit()
                 db.refresh(appointment)
 
-            # Send notifications (non-blocking, failures don't affect cancellation)
+            # Send SMS notifications to both doctor and patient (non-blocking)
             if patient:
                 try:
-                    notification_service.send_doctor_cancellation_email(
-                        doctor_email=doctor.email,
+                    # Doctor SMS notification
+                    notification_service.send_doctor_cancellation_sms(
+                        doctor_phone=doctor.phone_number,
                         doctor_name=doctor.name,
                         patient_name=patient.name,
                         patient_mobile=patient.mobile_number,
                         appointment_date=appointment_date,
                         appointment_time=appointment_time
                     )
+                    # Patient SMS notification
                     notification_service.send_patient_cancellation_sms(
                         patient_mobile=patient.mobile_number,
                         patient_name=patient.name,

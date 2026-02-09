@@ -12,6 +12,7 @@ class DoctorBase(BaseModel):
     clinic_id: UUID
     name: str = Field(..., min_length=1, max_length=255)
     email: EmailStr  # Google Calendar email
+    phone_number: Optional[str] = Field(None, max_length=20, description="Doctor's mobile for SMS notifications")
     specialization: str = Field(..., min_length=1, max_length=255)
     experience_years: int = Field(..., ge=0)
     languages: List[str] = Field(default_factory=list)
@@ -32,6 +33,7 @@ class DoctorUpdate(BaseModel):
     """Schema for updating doctor information."""
     clinic_id: Optional[UUID] = Field(None, description="Reassign doctor to another clinic")
     name: Optional[str] = Field(None, min_length=1, max_length=255)
+    phone_number: Optional[str] = Field(None, max_length=20, description="Doctor's mobile for SMS notifications")
     specialization: Optional[str] = Field(None, min_length=1, max_length=255)
     experience_years: Optional[int] = Field(None, ge=0)
     languages: Optional[List[str]] = None

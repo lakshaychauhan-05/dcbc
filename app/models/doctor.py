@@ -24,6 +24,7 @@ class Doctor(Base):
 
     clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String(255), nullable=False)
+    phone_number = Column(String(20), nullable=True)  # Doctor's mobile for SMS notifications
     specialization = Column(String(255), nullable=False)
     experience_years = Column(Integer, nullable=False)
     languages = Column(ARRAY(String), nullable=False, default=list)
