@@ -29,7 +29,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_doctor_accounts_doctor_email'), 'doctor_accounts', ['doctor_email'], unique=True)
     op.drop_constraint('doctor_leaves_doctor_email_fkey', 'doctor_leaves', type_='foreignkey')
     op.create_foreign_key(None, 'doctor_leaves', 'doctors', ['doctor_email'], ['email'], ondelete='CASCADE')
-    op.add_column('doctors', sa.Column('phone_number', sa.String(length=20), nullable=True))
+    op.add_column('doctors', sa.Column('phone_number', sa.String(length=13), nullable=True))
     # ### end Alembic commands ###
 
 

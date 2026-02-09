@@ -1,10 +1,28 @@
 """
 Doctor Pydantic schemas for request/response validation.
 """
-from pydantic import BaseModel, EmailStr, Field
+import re
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
+
+
+def validate_phone_number(value: Optional[str]) -> Optional[str]:
+    """Validate phone number: 10 digits with optional +91 prefix."""
+    if value is None:
+        return None
+
+    # Remove spaces and dashes
+    cleaned = re.sub(r'[\s\-]', '', value)
+
+    # Pattern: optional +91 followed by exactly 10 digits
+    pattern = r'^(\+91)?[6-9]\d{9}$'
+
+    if not re.match(pattern, cleaned):
+        raise ValueError('Phone number must be 10 digits (starting with 6-9) with optional +91 prefix')
+
+    return cleaned
 
 
 class DoctorBase(BaseModel):
@@ -12,8 +30,13 @@ class DoctorBase(BaseModel):
     clinic_id: UUID
     name: str = Field(..., min_length=1, max_length=255)
     email: EmailStr  # Google Calendar email
-    phone_number: Optional[str] = Field(None, max_length=20, description="Doctor's mobile for SMS notifications")
+    phone_number: Optional[str] = Field(None, max_length=13, description="10 digits with optional +91 prefix")
     specialization: str = Field(..., min_length=1, max_length=255)
+
+    @field_validator('phone_number')
+    @classmethod
+    def validate_phone(cls, v):
+        return validate_phone_number(v)
     experience_years: int = Field(..., ge=0)
     languages: List[str] = Field(default_factory=list)
     consultation_type: str = Field(..., min_length=1, max_length=100)
@@ -33,7 +56,7 @@ class DoctorUpdate(BaseModel):
     """Schema for updating doctor information."""
     clinic_id: Optional[UUID] = Field(None, description="Reassign doctor to another clinic")
     name: Optional[str] = Field(None, min_length=1, max_length=255)
-    phone_number: Optional[str] = Field(None, max_length=20, description="Doctor's mobile for SMS notifications")
+    phone_number: Optional[str] = Field(None, max_length=13, description="10 digits with optional +91 prefix")
     specialization: Optional[str] = Field(None, min_length=1, max_length=255)
     experience_years: Optional[int] = Field(None, ge=0)
     languages: Optional[List[str]] = None
@@ -44,6 +67,11 @@ class DoctorUpdate(BaseModel):
     slot_duration_minutes: Optional[int] = Field(None, ge=5, le=120)
     timezone: Optional[str] = Field(None, max_length=64)
     is_active: Optional[bool] = None
+
+    @field_validator('phone_number')
+    @classmethod
+    def validate_phone(cls, v):
+        return validate_phone_number(v)
 
 
 class DoctorResponse(DoctorBase):
