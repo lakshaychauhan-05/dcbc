@@ -201,7 +201,7 @@ class BookingService:
                     doctor_name=doctor.name,
                     appointment_date=appointment.date,
                     appointment_time=appointment.start_time,
-                    clinic_address=doctor.clinic_address
+                    clinic_address=doctor.clinic.address if doctor.clinic else settings.CLINIC_ADDRESS
                 )
             except Exception as e:
                 logger.warning(f"Failed to send booking notifications: {e}")
@@ -382,7 +382,7 @@ class BookingService:
                     doctor_name=doctor.name,
                     new_date=reschedule_data.new_date,
                     new_time=reschedule_data.new_start_time,
-                    clinic_address=doctor.clinic_address
+                    clinic_address=doctor.clinic.address if doctor.clinic else settings.CLINIC_ADDRESS
                 )
             except Exception as e:
                 logger.warning(f"Failed to send reschedule notifications: {e}")
