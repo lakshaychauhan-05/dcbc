@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, List, Optional
 import logging
 
+import hashlib
 from app.services.google_calendar_service import GoogleCalendarService
 from app.services.availability_service import AvailabilityService
 from app.models.appointment import Appointment, AppointmentStatus, AppointmentSource
@@ -288,8 +289,9 @@ class CalendarSyncService:
                 return 'conflicts'
             
             # Create "placeholder" appointment for doctor-created events
-            # Get or create placeholder patient
-            placeholder_mobile = f"WALKIN-{doctor.email}"
+            # Get or create placeholder patient (use hash to keep under 20 chars)
+            email_hash = hashlib.md5(doctor.email.encode()).hexdigest()[:12]
+            placeholder_mobile = f"WALKIN-{email_hash}"  # 19 chars max
             placeholder_patient = db.query(Patient).filter(
                 Patient.mobile_number == placeholder_mobile
             ).first()
@@ -330,6 +332,10 @@ class CalendarSyncService:
             
         except Exception as e:
             logger.error(f"Error creating appointment from calendar: {str(e)}")
+            try:
+                db.rollback()
+            except Exception:
+                pass
             return 'skipped'
     
     async def _handle_deleted_event(

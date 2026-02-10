@@ -103,8 +103,13 @@ class CalendarReconcileService:
         db = SessionLocal()
         try:
             self._run_sync(self._sync_service.sync_calendar_to_db, doctor_email, db)
+            db.commit()
         except Exception as e:
             logger.error(f"Calendar reconcile failed for {doctor_email}: {e}")
+            try:
+                db.rollback()
+            except Exception:
+                pass
         finally:
             db.close()
 
