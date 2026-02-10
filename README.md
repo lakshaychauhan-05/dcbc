@@ -13,7 +13,7 @@ Multi-service calendar booking system with Google Calendar sync, admin/doctor po
 ├── chatbot-service/         # Chatbot API (FastAPI + LLM)
 │   └── run_chatbot.py
 ├── admin-portal-frontend/   # Admin UI (Vite + React, port 5500)
-├── doctor-portal-frontend/  # Doctor UI (Vite + React, port 5173)
+├── doctor-portal-frontend/  # Doctor UI (Vite + React, port 5175)
 ├── chatbot-frontend/        # Chatbot UI (CRA, port 3000)
 ├── alembic/                 # DB migrations
 ├── env.example              # Root env template (shared backends)
@@ -28,7 +28,7 @@ Multi-service calendar booking system with Google Calendar sync, admin/doctor po
 - Doctor Portal API: `run_doctor_portal.py` → 5000
 - Admin Portal API: `run_admin_portal.py` → 5050
 - Chatbot API: `chatbot-service/run_chatbot.py` → defaults to 8002 (Docker publishes 8001)
-- Frontends: chatbot UI 3000, doctor UI 5173, admin UI 5500
+- Frontends: chatbot UI 3000, doctor UI 5175, admin UI 5500
 
 ## Prerequisites
 - Python 3.11+
@@ -92,7 +92,7 @@ cd chatbot-service && python run_chatbot.py
 Frontends (in their folders):
 ```bash
 npm run dev -- --host --port 5500   # admin UI
-npm run dev -- --host --port 5173   # doctor UI
+npm run dev -- --host --port 5175   # doctor UI
 npm start                            # chatbot UI (CRA)
 ```
 Windows convenience launcher (starts all backends + frontends in separate terminals):

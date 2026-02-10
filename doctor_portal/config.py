@@ -37,8 +37,8 @@ class PortalSettings(BaseSettings):
     def cors_origins(self) -> List[str]:
         if self.DOCTOR_PORTAL_CORS_ORIGINS:
             return [item.strip() for item in self.DOCTOR_PORTAL_CORS_ORIGINS.split(",") if item.strip()]
-        # Sensible defaults for local dev (backend 5000, frontend 5173)
-        return ["http://localhost:5000", "http://127.0.0.1:5000", "http://localhost:5173", "http://127.0.0.1:5173"]
+        # Sensible defaults for local dev (backend 5000, frontend 5175)
+        return ["http://localhost:5000", "http://127.0.0.1:5000", "http://localhost:5175", "http://127.0.0.1:5175"]
 
 
 portal_settings = PortalSettings()

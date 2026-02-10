@@ -16,7 +16,7 @@ Multi-service calendar booking platform with Google Calendar sync, admin/doctor 
 
 ### Frontend Services (React)
 - **Admin UI** (`admin-portal-frontend/`): Vite + React + TypeScript, vanilla CSS, port 5500
-- **Doctor UI** (`doctor-portal-frontend/`): Vite + React + TypeScript, Material-UI, port 5173
+- **Doctor UI** (`doctor-portal-frontend/`): Vite + React + TypeScript, Material-UI, port 5175
 - **Chatbot UI** (`chatbot-frontend/`): Create React App + TypeScript, Tailwind CSS, port 3000
 
 ### Database

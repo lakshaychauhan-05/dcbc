@@ -58,7 +58,7 @@ $services = @(
     @{ Name = "Core API (8000)"; Command = "& `"$python`" run.py"; Dir = $BaseDir; Pid = Join-Path $runDir "core.pid" },
     @{ Name = "Doctor Portal API (5000)"; Command = "& `"$python`" run_doctor_portal.py"; Dir = $BaseDir; Pid = Join-Path $runDir "doctor_api.pid" },
     @{ Name = "Admin Portal API (5050)"; Command = "& `"$python`" run_admin_portal.py"; Dir = $BaseDir; Pid = Join-Path $runDir "admin_api.pid" },
-    @{ Name = "Doctor Portal UI (5173)"; Command = "npm run dev -- --host --port 5173"; Dir = Join-Path $BaseDir "doctor-portal-frontend"; Pid = Join-Path $runDir "doctor_ui.pid" },
+    @{ Name = "Doctor Portal UI (5175)"; Command = "npm run dev -- --host --port 5175"; Dir = Join-Path $BaseDir "doctor-portal-frontend"; Pid = Join-Path $runDir "doctor_ui.pid" },
     @{ Name = "Admin Portal UI (5500)"; Command = "npm run dev -- --host --port 5500"; Dir = Join-Path $BaseDir "admin-portal-frontend"; Pid = Join-Path $runDir "admin_ui.pid" },
     @{ Name = "Chatbot API (8003)"; Command = "`$env:CHATBOT_PORT='8003'; & `"$python`" chatbot-service/run_chatbot.py"; Dir = $BaseDir; Pid = Join-Path $runDir "chatbot_api.pid" },
     @{ Name = "Chatbot UI (3000)"; Command = "npm run start"; Dir = Join-Path $BaseDir "chatbot-frontend"; Pid = Join-Path $runDir "chatbot_ui.pid" }
@@ -88,7 +88,7 @@ Write-Host "  Chatbot API:        http://localhost:8003"
 Write-Host "  Chatbot UI:         http://localhost:3000"
 Write-Host "  Doctor portal API:  http://localhost:5000/portal/health"
 Write-Host "  Admin portal API:   http://localhost:5050/admin/health"
-Write-Host "  Doctor UI:          http://localhost:5173"
+Write-Host "  Doctor UI:          http://localhost:5175"
 Write-Host "  Admin UI:           http://localhost:5500"
 Write-Host ""
 Write-Host "LOGS:" -ForegroundColor Cyan

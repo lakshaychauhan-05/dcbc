@@ -69,9 +69,9 @@ $processes += [pscustomobject]@{ Name = "admin-portal-ui"; Id = $adminFrontend.I
 
 Start-Sleep -Seconds 1
 
-# Doctor portal frontend (Vite, port 5173)
+# Doctor portal frontend (Vite, port 5175)
 $doctorFrontendDir = Join-Path $root "doctor-portal-frontend"
-$doctorFrontendCmd = "npm run dev -- --host --port 5173"
+$doctorFrontendCmd = "npm run dev -- --host --port 5175"
 $doctorFrontend = Start-Terminal -Title "Doctor Portal UI" -WorkingDirectory $doctorFrontendDir -Command $doctorFrontendCmd
 $processes += [pscustomobject]@{ Name = "doctor-portal-ui"; Id = $doctorFrontend.Id; Command = $doctorFrontendCmd; WorkingDirectory = $doctorFrontendDir }
 
