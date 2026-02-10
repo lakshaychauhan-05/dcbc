@@ -54,8 +54,14 @@ const Login = () => {
       setToken(token);
       navigate("/dashboard", { replace: true });
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "Invalid email or password");
+      const axiosError = err as { response?: { data?: { detail?: string }; status?: number }; message?: string; code?: string };
+      if (axiosError.code === "ERR_NETWORK" || !axiosError.response) {
+        // CORS or network error - request didn't reach the server
+        setError("Unable to connect to server. Please ensure the backend is running and try again.");
+      } else {
+        const detail = axiosError.response?.data?.detail;
+        setError(detail ?? "Invalid email or password");
+      }
     } finally {
       setLoading(false);
     }
