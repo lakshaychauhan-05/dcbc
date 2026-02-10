@@ -13,7 +13,7 @@ The platform consists of 7 services that need to be deployed:
 | Doctor Portal API | Backend | 5000 | Doctor scheduling backend |
 | Chatbot API | Backend | 8002 | LLM-powered booking assistant |
 | Admin Portal UI | Frontend | 5500 | Admin dashboard |
-| Doctor Portal UI | Frontend | 5173 | Doctor dashboard |
+| Doctor Portal UI | Frontend | 5175 | Doctor dashboard |
 | Chatbot UI | Frontend | 3000 | Chat widget |
 
 ## Prerequisites
