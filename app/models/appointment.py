@@ -3,7 +3,7 @@ Appointment model - represents a booked appointment.
 """
 import uuid
 from datetime import datetime, date, time, timezone
-from sqlalchemy import Column, String, Date, Time, DateTime, ForeignKey, Enum as SQLEnum, Index, Integer
+from sqlalchemy import Column, String, Date, Time, DateTime, ForeignKey, Enum as SQLEnum, Index, Integer, Text
 from sqlalchemy.dialects.postgresql import UUID, ExcludeConstraint
 from sqlalchemy import func
 from sqlalchemy.orm import relationship
@@ -50,8 +50,10 @@ class Appointment(Base):
     calendar_sync_next_attempt_at = Column(DateTime(timezone=True), nullable=True, index=True)
     calendar_sync_last_error = Column(String(500), nullable=True)
     source = Column(SQLEnum(AppointmentSource), nullable=False)
+    notes = Column(Text, nullable=True)  # Notes for cancellation/reschedule reasons
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
-    
+    updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=lambda: datetime.now(timezone.utc))
+
     # Relationships
     doctor = relationship("Doctor", back_populates="appointments")
     patient = relationship("Patient", back_populates="appointments")

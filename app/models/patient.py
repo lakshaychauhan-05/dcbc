@@ -24,7 +24,8 @@ class Patient(Base):
     date_of_birth = Column(Date, nullable=True)
     sms_opt_in = Column(Boolean, default=True, nullable=False)  # SMS notification preference
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
-    
+    updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=lambda: datetime.now(timezone.utc))
+
     # Relationships
     appointments = relationship("Appointment", back_populates="patient", cascade="all, delete-orphan")
     history = relationship("PatientHistory", back_populates="patient", cascade="all, delete-orphan")

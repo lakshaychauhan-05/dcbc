@@ -255,6 +255,29 @@ class CalendarSyncService:
         This happens when doctor manually creates event in calendar.
         """
         try:
+            event_id = calendar_event.get('id')
+
+            # Check if appointment with this event_id already exists (any status)
+            existing_appointment = db.query(Appointment).filter(
+                Appointment.google_calendar_event_id == event_id
+            ).first()
+
+            if existing_appointment:
+                # Appointment already exists - handle based on status
+                if existing_appointment.status == AppointmentStatus.CANCELLED:
+                    # Reactivate cancelled appointment if event reappears
+                    logger.info(
+                        f"Reactivating cancelled appointment {existing_appointment.id} "
+                        f"for calendar event {event_id}"
+                    )
+                    existing_appointment.status = AppointmentStatus.BOOKED
+                    existing_appointment.calendar_sync_status = "SYNCED"
+                    return 'updated'
+                else:
+                    # Already exists with active status, skip
+                    logger.debug(f"Appointment already exists for event {event_id}, skipping")
+                    return 'skipped'
+
             # Parse event details
             summary = calendar_event.get('summary', 'Manual Booking')
             
