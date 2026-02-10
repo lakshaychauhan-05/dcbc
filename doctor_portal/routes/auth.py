@@ -255,3 +255,47 @@ def change_password(
     db.commit()
 
     return MessageResponse(message="Password changed successfully")
+
+
+@router.post("/logout", response_model=MessageResponse)
+def logout(
+    db: Session = Depends(get_portal_db),
+    account=Depends(get_current_doctor_account),
+) -> MessageResponse:
+    """
+    Logout the current doctor.
+    Note: JWT tokens are stateless. This endpoint logs the logout event
+    and client should discard the token. For full revocation, implement
+    a token blacklist with Redis.
+    """
+    logging.info(f"Doctor {account.doctor_email} logged out")
+    return MessageResponse(message="Logged out successfully")
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh_token(
+    db: Session = Depends(get_portal_db),
+    account=Depends(get_current_doctor_account),
+) -> TokenResponse:
+    """
+    Refresh the access token.
+    The current valid token is used to issue a new token with extended expiry.
+    """
+    # Verify doctor is still active
+    doctor = db.query(Doctor).filter(
+        Doctor.email == account.doctor_email,
+        Doctor.is_active == True
+    ).first()
+    if not doctor:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Doctor profile inactive or missing",
+        )
+
+    # Issue new token
+    new_token = create_access_token({"sub": account.doctor_email})
+    return TokenResponse(
+        access_token=new_token,
+        token_type="bearer",
+        expires_in_minutes=portal_settings.DOCTOR_PORTAL_ACCESS_TOKEN_EXPIRE_MINUTES,
+    )

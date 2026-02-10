@@ -1,6 +1,8 @@
 """
 Dashboard and data access routes for the doctor portal.
 """
+import logging
+import threading
 from datetime import date, datetime, timezone
 from uuid import UUID
 import uuid
@@ -31,6 +33,13 @@ from app.models.appointment import Appointment, AppointmentStatus
 from app.models.patient import Patient
 from app.models.patient_history import PatientHistory
 from app.models.doctor import Doctor
+from app.services.calendar_sync_queue import calendar_sync_queue
+from app.services.notification_service import notification_service
+from app.services.google_calendar_service import GoogleCalendarService
+from app.config import settings
+from app.database import SessionLocal
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -54,6 +63,7 @@ def _appointment_to_item(appt: Appointment, patient: Patient) -> AppointmentItem
             name=patient.name,
             mobile_number=patient.mobile_number,
             email=patient.email,
+            sms_opt_in=patient.sms_opt_in,
         ),
     )
 
@@ -102,6 +112,7 @@ def list_patients(
             name=p.name,
             mobile_number=p.mobile_number,
             email=p.email,
+            sms_opt_in=p.sms_opt_in,
         )
         for p in patients
     ]
@@ -208,7 +219,7 @@ def cancel_appointment(
     db: Session = Depends(get_portal_db),
     account=Depends(get_current_doctor_account),
 ) -> MessageResponse:
-    """Cancel an appointment."""
+    """Cancel an appointment with calendar sync and notifications."""
     appointment = _get_appointment_for_doctor(appointment_id, db, account.doctor_email)
 
     if appointment.status == AppointmentStatus.CANCELLED:
@@ -222,12 +233,86 @@ def cancel_appointment(
             detail="Cannot cancel a completed appointment",
         )
 
+    # Get doctor and patient for notifications
+    doctor = db.query(Doctor).filter(Doctor.email == account.doctor_email).first()
+    patient = db.query(Patient).filter(Patient.id == appointment.patient_id).first()
+
+    # Store appointment details for notifications
+    appointment_date = appointment.date
+    appointment_time = appointment.start_time
+    event_id = appointment.google_calendar_event_id
+
+    # Update appointment status
     appointment.status = AppointmentStatus.CANCELLED
-    appointment.updated_at = datetime.now(timezone.utc)
+    appointment.calendar_sync_status = "PENDING"
     if payload.reason:
         appointment.notes = f"Cancelled by doctor: {payload.reason}"
 
     db.commit()
+    db.refresh(appointment)
+
+    # Queue calendar sync and delete from Google Calendar
+    def _sync_calendar_delete():
+        bg_db = SessionLocal()
+        try:
+            if event_id:
+                calendar_sync_queue.enqueue_delete(str(appointment_id))
+                cal = GoogleCalendarService()
+                ok = cal.delete_event(doctor_email=account.doctor_email, event_id=event_id)
+
+                # Update sync status in database
+                appt = bg_db.query(Appointment).filter(Appointment.id == appointment_id).first()
+                if appt:
+                    if ok:
+                        appt.calendar_sync_status = "SYNCED"
+                        appt.calendar_sync_last_error = None
+                    else:
+                        appt.calendar_sync_status = "FAILED"
+                        appt.calendar_sync_last_error = cal.last_error or "Calendar delete failed"
+                    bg_db.commit()
+                logger.info(f"Calendar delete synced for appointment {appointment_id}")
+        except Exception as e:
+            logger.error(f"Failed to sync calendar delete: {e}")
+            try:
+                appt = bg_db.query(Appointment).filter(Appointment.id == appointment_id).first()
+                if appt:
+                    appt.calendar_sync_status = "FAILED"
+                    appt.calendar_sync_last_error = str(e)[:500]
+                    bg_db.commit()
+            except Exception:
+                pass
+        finally:
+            bg_db.close()
+
+    threading.Thread(target=_sync_calendar_delete, daemon=True).start()
+
+    # Send notifications in background
+    def _send_notifications():
+        try:
+            if doctor and patient:
+                # Doctor SMS
+                notification_service.send_doctor_cancellation_sms(
+                    doctor_phone=doctor.phone_number,
+                    doctor_name=doctor.name,
+                    patient_name=patient.name,
+                    patient_mobile=patient.mobile_number,
+                    appointment_date=appointment_date,
+                    appointment_time=appointment_time
+                )
+                # Patient SMS
+                notification_service.send_patient_cancellation_sms(
+                    patient_mobile=patient.mobile_number,
+                    patient_name=patient.name,
+                    doctor_name=doctor.name,
+                    appointment_date=appointment_date,
+                    appointment_time=appointment_time,
+                    sms_opt_in=patient.sms_opt_in
+                )
+        except Exception as e:
+            logger.warning(f"Failed to send cancellation notifications: {e}")
+
+    threading.Thread(target=_send_notifications, daemon=True).start()
+
     return MessageResponse(message="Appointment cancelled successfully")
 
 
@@ -268,7 +353,9 @@ def reschedule_appointment(
     db: Session = Depends(get_portal_db),
     account=Depends(get_current_doctor_account),
 ) -> MessageResponse:
-    """Reschedule an appointment to a new date/time."""
+    """Reschedule an appointment with calendar sync and notifications."""
+    from app.utils.datetime_utils import to_utc
+
     appointment = _get_appointment_for_doctor(appointment_id, db, account.doctor_email)
 
     if appointment.status == AppointmentStatus.CANCELLED:
@@ -303,15 +390,132 @@ def reschedule_appointment(
             detail="Time slot conflicts with another appointment",
         )
 
+    # Get doctor and patient for notifications
+    doctor = db.query(Doctor).filter(Doctor.email == account.doctor_email).first()
+    patient = db.query(Patient).filter(Patient.id == appointment.patient_id).first()
+
+    # Store old appointment details for notifications
+    old_date = appointment.date
+    old_time = appointment.start_time
+    old_event_id = appointment.google_calendar_event_id
+
+    # Calculate UTC times
+    appointment_tz = doctor.timezone if doctor else settings.DEFAULT_TIMEZONE
+    start_at_utc = to_utc(payload.new_date, payload.new_start_time, appointment_tz)
+    end_at_utc = to_utc(payload.new_date, payload.new_end_time, appointment_tz)
+
+    # Update appointment
     appointment.date = payload.new_date
     appointment.start_time = payload.new_start_time
     appointment.end_time = payload.new_end_time
+    appointment.start_at_utc = start_at_utc
+    appointment.end_at_utc = end_at_utc
+    appointment.timezone = appointment_tz
     appointment.status = AppointmentStatus.RESCHEDULED
-    appointment.updated_at = datetime.now(timezone.utc)
+    appointment.calendar_sync_status = "PENDING"
     if payload.reason:
         appointment.notes = f"Rescheduled: {payload.reason}"
 
     db.commit()
+    db.refresh(appointment)
+
+    # Queue calendar sync in background
+    def _sync_calendar():
+        bg_db = SessionLocal()
+        try:
+            cal = GoogleCalendarService()
+            ok = False
+            new_event_id = None
+
+            if old_event_id:
+                calendar_sync_queue.enqueue_update(str(appointment_id))
+                result = cal.update_event(
+                    doctor_email=account.doctor_email,
+                    event_id=old_event_id,
+                    patient_name=patient.name if patient else "Patient",
+                    appointment_date=payload.new_date,
+                    start_time=payload.new_start_time,
+                    end_time=payload.new_end_time,
+                    description=f"Appointment with {patient.name if patient else 'Patient'}",
+                    timezone_name=appointment_tz,
+                )
+                ok = bool(result)
+                if isinstance(result, str):
+                    new_event_id = result
+                logger.info(f"Calendar update synced for appointment {appointment_id}")
+            else:
+                calendar_sync_queue.enqueue_create(str(appointment_id))
+                new_event_id = cal.create_event(
+                    doctor_email=account.doctor_email,
+                    patient_name=patient.name if patient else "Patient",
+                    appointment_date=payload.new_date,
+                    start_time=payload.new_start_time,
+                    end_time=payload.new_end_time,
+                    description=f"Appointment with {patient.name if patient else 'Patient'}",
+                    timezone_name=appointment_tz,
+                )
+                ok = bool(new_event_id)
+                logger.info(f"Calendar create synced for appointment {appointment_id}")
+
+            # Update sync status in database
+            appt = bg_db.query(Appointment).filter(Appointment.id == appointment_id).first()
+            if appt:
+                if ok:
+                    appt.calendar_sync_status = "SYNCED"
+                    appt.calendar_sync_last_error = None
+                    if new_event_id:
+                        appt.google_calendar_event_id = new_event_id
+                else:
+                    appt.calendar_sync_status = "FAILED"
+                    appt.calendar_sync_last_error = cal.last_error or "Calendar sync failed"
+                bg_db.commit()
+        except Exception as e:
+            logger.error(f"Failed to sync calendar for reschedule: {e}")
+            try:
+                appt = bg_db.query(Appointment).filter(Appointment.id == appointment_id).first()
+                if appt:
+                    appt.calendar_sync_status = "FAILED"
+                    appt.calendar_sync_last_error = str(e)[:500]
+                    bg_db.commit()
+            except Exception:
+                pass
+        finally:
+            bg_db.close()
+
+    threading.Thread(target=_sync_calendar, daemon=True).start()
+
+    # Send notifications in background
+    def _send_notifications():
+        try:
+            if doctor and patient:
+                # Doctor SMS
+                notification_service.send_doctor_reschedule_sms(
+                    doctor_phone=doctor.phone_number,
+                    doctor_name=doctor.name,
+                    patient_name=patient.name,
+                    patient_mobile=patient.mobile_number,
+                    old_date=old_date,
+                    old_time=old_time,
+                    new_date=payload.new_date,
+                    new_time=payload.new_start_time
+                )
+                # Patient SMS
+                clinic_address = doctor.clinic.address if doctor.clinic else settings.CLINIC_ADDRESS
+                notification_service.send_patient_reschedule_sms(
+                    patient_mobile=patient.mobile_number,
+                    patient_name=patient.name,
+                    doctor_name=doctor.name,
+                    doctor_specialization=doctor.specialization,
+                    new_date=payload.new_date,
+                    new_time=payload.new_start_time,
+                    clinic_address=clinic_address,
+                    sms_opt_in=patient.sms_opt_in
+                )
+        except Exception as e:
+            logger.warning(f"Failed to send reschedule notifications: {e}")
+
+    threading.Thread(target=_send_notifications, daemon=True).start()
+
     return MessageResponse(message="Appointment rescheduled successfully")
 
 
@@ -437,6 +641,7 @@ def update_patient(
         name=patient.name,
         mobile_number=patient.mobile_number,
         email=patient.email,
+        sms_opt_in=patient.sms_opt_in,
     )
 
 

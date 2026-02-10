@@ -3,7 +3,7 @@ Pydantic schemas for the doctor portal.
 """
 from datetime import datetime, date, time
 from typing import List, Optional
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from app.models.appointment import AppointmentStatus
 
 
@@ -31,6 +31,7 @@ class DoctorProfile(BaseModel):
     languages: List[str]
     consultation_type: str
     timezone: str
+    phone_number: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -41,6 +42,7 @@ class PatientSummary(BaseModel):
     name: str
     mobile_number: str | None = None
     email: str | None = None
+    sms_opt_in: bool = True
 
 
 class PatientHistoryItem(BaseModel):
@@ -111,6 +113,21 @@ class RescheduleRequest(BaseModel):
     new_end_time: time
     reason: Optional[str] = None
 
+    @field_validator('new_date')
+    @classmethod
+    def validate_date_not_in_past(cls, v: date) -> date:
+        from app.utils.datetime_utils import now_ist
+        today = now_ist().date()
+        if v < today:
+            raise ValueError('Cannot reschedule to a past date')
+        return v
+
+    @model_validator(mode='after')
+    def validate_time_range(self):
+        if self.new_end_time <= self.new_start_time:
+            raise ValueError('End time must be after start time')
+        return self
+
 
 class CancelRequest(BaseModel):
     """Request to cancel an appointment."""
@@ -160,7 +177,18 @@ class UpdateProfileRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     """Request to change password."""
     current_password: str = Field(min_length=6, max_length=128)
-    new_password: str = Field(min_length=6, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator('new_password')
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        if not any(c.isupper() for c in v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not any(c.islower() for c in v):
+            raise ValueError('Password must contain at least one lowercase letter')
+        if not any(c.isdigit() for c in v):
+            raise ValueError('Password must contain at least one digit')
+        return v
 
 
 class MessageResponse(BaseModel):

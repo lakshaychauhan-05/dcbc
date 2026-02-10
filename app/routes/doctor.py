@@ -1,11 +1,12 @@
 """
 Doctor management API routes.
 """
+import threading
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from uuid import UUID
 
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from app.security import verify_api_key
 from app.models.doctor import Doctor
 from app.models.doctor_leave import DoctorLeave
@@ -24,6 +25,39 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 rag_sync_service = RAGSyncService()
+
+
+def _background_rag_sync(doctor_id: str, doctor_data: dict):
+    """Run RAG sync in background thread."""
+    try:
+        # Create a simple object with the needed attributes
+        class DoctorProxy:
+            pass
+
+        proxy = DoctorProxy()
+        for key, value in doctor_data.items():
+            setattr(proxy, key, value)
+
+        rag_sync_service.sync_doctor(proxy)
+        logger.info(f"Background RAG sync completed for doctor {doctor_data.get('email')}")
+    except Exception as e:
+        logger.error(f"Background RAG sync failed for doctor {doctor_data.get('email')}: {e}")
+
+
+def _background_calendar_watch(doctor_email: str):
+    """Run calendar watch setup in background thread with its own DB session."""
+    try:
+        db = SessionLocal()
+        try:
+            calendar_watch_service.setup_watch_for_doctor(
+                doctor_email=doctor_email,
+                db=db
+            )
+            logger.info(f"Background calendar watch setup completed for {doctor_email}")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Background calendar watch setup failed for {doctor_email}: {e}")
 
 
 @router.post("/", response_model=DoctorResponse, status_code=status.HTTP_201_CREATED)
@@ -58,25 +92,37 @@ async def create_doctor(
         db.add(doctor)
         db.commit()
         db.refresh(doctor)
-        
-        # Trigger RAG sync after DB commit
-        try:
-            rag_sync_service.sync_doctor(doctor)
-        except Exception as e:
-            logger.error(f"Failed to sync doctor to RAG: {str(e)}")
-            # Don't fail the request if RAG sync fails
-        
-        # Set up Google Calendar watch for two-way sync
-        try:
-            calendar_watch_service.setup_watch_for_doctor(
-                doctor_email=doctor.email,
-                db=db
-            )
-            logger.info(f"Successfully set up calendar watch for {doctor.email}")
-        except Exception as e:
-            logger.error(f"Failed to set up calendar watch: {str(e)}")
-            # Don't fail doctor creation if watch setup fails
-        
+
+        # Prepare doctor data for background tasks (avoid detached session issues)
+        doctor_dict = {
+            "id": str(doctor.id),
+            "email": doctor.email,
+            "name": doctor.name,
+            "specialization": doctor.specialization,
+            "experience_years": doctor.experience_years,
+            "languages": doctor.languages,
+            "consultation_type": doctor.consultation_type,
+            "phone_number": doctor.phone_number,
+        }
+
+        # Trigger RAG sync in background (non-blocking)
+        threading.Thread(
+            target=_background_rag_sync,
+            args=(str(doctor.id), doctor_dict),
+            daemon=True,
+            name=f"rag-sync-{doctor.email}"
+        ).start()
+        logger.info(f"Queued background RAG sync for {doctor.email}")
+
+        # Set up Google Calendar watch in background (non-blocking)
+        threading.Thread(
+            target=_background_calendar_watch,
+            args=(doctor.email,),
+            daemon=True,
+            name=f"calendar-watch-{doctor.email}"
+        ).start()
+        logger.info(f"Queued background calendar watch for {doctor.email}")
+
         return doctor
         
     except HTTPException:
@@ -174,15 +220,31 @@ async def update_doctor(
         
         db.commit()
         db.refresh(doctor)
-        
-        # Trigger RAG sync after DB commit
-        try:
-            rag_sync_service.sync_doctor(doctor)
-        except Exception as e:
-            logger.error(f"Failed to sync doctor to RAG: {str(e)}")
-        
+
+        # Prepare doctor data for background task
+        doctor_dict = {
+            "id": str(doctor.id),
+            "email": doctor.email,
+            "name": doctor.name,
+            "specialization": doctor.specialization,
+            "experience_years": doctor.experience_years,
+            "languages": doctor.languages,
+            "consultation_type": doctor.consultation_type,
+            "phone_number": doctor.phone_number,
+        }
+
+        # Trigger RAG sync in background (non-blocking)
+        threading.Thread(
+            target=_background_rag_sync,
+            args=(str(doctor.id), doctor_dict),
+            daemon=True,
+            name=f"rag-sync-update-{doctor.email}"
+        ).start()
+
         return doctor
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Error updating doctor: {str(e)}")
