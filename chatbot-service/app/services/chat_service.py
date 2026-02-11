@@ -1421,10 +1421,11 @@ class ChatService:
             if date_value:
                 extracted["date"] = date_value
 
-        if not booking_context.get("time"):
-            time_value = self._extract_time_from_text(message)
-            if time_value:
-                extracted["time"] = time_value
+        # Always try to extract time - user may be providing a NEW time after a slot was unavailable
+        # This allows natural conversation flow like "try 2pm instead"
+        time_value = self._extract_time_from_text(message)
+        if time_value:
+            extracted["time"] = time_value
 
         if not booking_context.get("doctor_name") and self._mentions_doctor_pronoun(message):
             if conversation_context.get("last_doctor_name"):
