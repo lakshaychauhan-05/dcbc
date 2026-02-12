@@ -5,39 +5,70 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: appointment_db
+      POSTGRES_DB: calendar_booking
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Calendar Booking Service
-  calendar-service:
+  # Unified Backend API
+  # Includes: Core Calendar API + Doctor Portal + Admin Portal + Chatbot
+  backend:
     build:
       context: .
-      dockerfile: Dockerfile.calendar
+      dockerfile: Dockerfile
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:password@postgres:5432/appointment_db}
+      # Database
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/calendar_booking
+
+      # Server
+      PORT: 8000
       DEBUG: ${DEBUG:-false}
-      SERVICE_API_KEY: ${SERVICE_API_KEY:-}
-      SERVICE_API_KEYS: ${SERVICE_API_KEYS:-}
-      GOOGLE_CALENDAR_CREDENTIALS_PATH: ${GOOGLE_CALENDAR_CREDENTIALS_PATH:-/app/appointment-service-484808-b285efa3864f.json}
+      DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE:-Asia/Kolkata}
+
+      # Core API Auth
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-dev-api-key}
+      API_KEY_RATE_LIMIT_PER_MINUTE: 120
+      API_KEY_RATE_LIMIT_BURST: 30
+
+      # Doctor Portal Auth
+      DOCTOR_PORTAL_JWT_SECRET: ${DOCTOR_PORTAL_JWT_SECRET:-doctor-jwt-secret-dev}
+      DOCTOR_PORTAL_JWT_ALGORITHM: HS256
+      DOCTOR_PORTAL_OAUTH_CLIENT_ID: ${DOCTOR_PORTAL_OAUTH_CLIENT_ID:-}
+      DOCTOR_PORTAL_OAUTH_CLIENT_SECRET: ${DOCTOR_PORTAL_OAUTH_CLIENT_SECRET:-}
+      DOCTOR_PORTAL_OAUTH_REDIRECT_URI: ${DOCTOR_PORTAL_OAUTH_REDIRECT_URI:-http://localhost:8000/portal/auth/oauth/google/callback}
+      DOCTOR_PORTAL_FRONTEND_CALLBACK_URL: ${DOCTOR_PORTAL_FRONTEND_CALLBACK_URL:-http://localhost:5173/doctor/oauth/callback}
+
+      # Admin Portal Auth
+      ADMIN_PORTAL_JWT_SECRET: ${ADMIN_PORTAL_JWT_SECRET:-admin-jwt-secret-dev}
+      ADMIN_PORTAL_JWT_ALGORITHM: HS256
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+
+      # Chatbot (OpenAI)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4}
+      OPENAI_TEMPERATURE: 0.7
+      OPENAI_MAX_TOKENS: 500
+
+      # Google Calendar (disabled by default for local dev)
+      DISABLE_CALENDAR_WORKERS: ${DISABLE_CALENDAR_WORKERS:-true}
+      GOOGLE_CALENDAR_CREDENTIALS_PATH: ${GOOGLE_CALENDAR_CREDENTIALS_PATH:-}
       GOOGLE_CALENDAR_DELEGATED_ADMIN_EMAIL: ${GOOGLE_CALENDAR_DELEGATED_ADMIN_EMAIL:-}
-      WEBHOOK_BASE_URL: ${WEBHOOK_BASE_URL:-http://localhost:8000}
-      GOOGLE_CALENDAR_WEBHOOK_SECRET: ${GOOGLE_CALENDAR_WEBHOOK_SECRET:-}
-      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:3000}
+
+      # CORS
+      CORS_ALLOW_ORIGINS: http://localhost:5173,http://localhost:3000
     ports:
       - "8000:8000"
     volumes:
-      - ./appointment-service-484808-b285efa3864f.json:/app/appointment-service-484808-b285efa3864f.json:ro
+      - ./credentials:/app/credentials:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -47,57 +78,23 @@ services:
       timeout: 10s
       retries: 3
 
-  # Chatbot Service
-  chatbot-service:
+  # Unified Frontend
+  # Includes: Chatbot + Doctor Portal + Admin Portal
+  frontend:
     build:
-      context: ./chatbot-service
+      context: ./frontend
       dockerfile: Dockerfile
-    environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      CALENDAR_SERVICE_URL: ${CALENDAR_SERVICE_URL:-http://calendar-service:8000}
-      CALENDAR_SERVICE_API_KEY: ${CALENDAR_SERVICE_API_KEY:-}
-      DEBUG: ${DEBUG:-false}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-      CORS_ALLOW_ORIGINS: ${CHATBOT_CORS_ALLOW_ORIGINS:-http://localhost:3000}
+      args:
+        VITE_API_URL: http://localhost:8000
     ports:
-      - "8001:8001"
+      - "5173:80"
     depends_on:
-      - calendar-service
-      - redis
+      - backend
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health/"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/health"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  # Redis for session storage (optional)
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
-  # React Frontend
-  frontend:
-    build:
-      context: ./chatbot-frontend
-      dockerfile: Dockerfile
-    environment:
-      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:8001}
-    ports:
-      - "3000:3000"
-    depends_on:
-      - chatbot-service
-    volumes:
-      - ./chatbot-frontend/src:/app/src
-      - ./chatbot-frontend/public:/app/public
-
 volumes:
   postgres_data:
-  redis_data:

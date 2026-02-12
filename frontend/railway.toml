@@ -1,5 +1,5 @@
-# Railway Configuration for Calendar Booking Backend
-# Unified backend with Core API + Doctor Portal + Admin Portal + Chatbot
+# Railway Configuration for Calendar Booking Frontend
+# Unified React frontend with Chatbot + Doctor Portal + Admin Portal
 
 [build]
 builder = "dockerfile"
@@ -7,7 +7,7 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 300
+healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 numReplicas = 1

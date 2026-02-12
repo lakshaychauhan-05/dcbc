@@ -1,4 +1,5 @@
-# Dockerfile for Core Calendar API
+# Dockerfile for Unified Calendar Booking Backend
+# Includes: Core API + Doctor Portal + Admin Portal + Chatbot
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -20,6 +21,8 @@ COPY alembic/ ./alembic/
 COPY alembic.ini .
 COPY run.py .
 COPY run_migrations.py .
+
+# Copy credentials directory if exists (for Google Calendar)
 COPY credentials/ ./credentials/
 
 # Set environment variables
@@ -30,7 +33,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
 # Run migrations and start server
