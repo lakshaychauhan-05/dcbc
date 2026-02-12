@@ -278,9 +278,10 @@ class GoogleCalendarService:
             return True
             
         except HttpError as e:
-            if e.resp.status == 404:
-                # Event already deleted, consider it success
-                logger.warning(f"Google Calendar event {event_id} not found (already deleted?)")
+            if e.resp.status in (404, 410):
+                # 404 = Not Found, 410 = Gone (resource permanently deleted)
+                # Both mean the event doesn't exist - consider deletion successful
+                logger.warning(f"Google Calendar event {event_id} not found or already deleted (status {e.resp.status})")
                 return True
             self.last_error = f"Google API error: {str(e)}"
             logger.error(f"Failed to delete Google Calendar event: {self.last_error}")
