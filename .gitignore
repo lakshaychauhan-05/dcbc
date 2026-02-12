@@ -1,4 +1,6 @@
+# ===========================================
 # Python
+# ===========================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -19,52 +21,103 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+pip-log.txt
+pip-delete-this-directory.txt
 
+# ===========================================
 # Virtual Environment
+# ===========================================
 venv/
 ENV/
 env/
-.venv
-
-# Environment variables
-.env
+.venv/
 .env.local
+.env.*.local
 
-# IDE
+# ===========================================
+# Environment Variables (sensitive)
+# ===========================================
+.env
+!.env.example
+
+# ===========================================
+# IDE / Editor
+# ===========================================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.run/
+*.sublime-project
+*.sublime-workspace
 
+# ===========================================
 # Database
+# ===========================================
 *.db
 *.sqlite
 *.sqlite3
 
+# ===========================================
 # Logs
+# ===========================================
 *.log
 logs/
 
-# Google Calendar credentials - DO NOT commit service account keys
+# ===========================================
+# Google Calendar Credentials (sensitive)
+# ===========================================
 credentials/*.json
+!credentials/.gitkeep
 
+# ===========================================
 # Alembic
+# ===========================================
 alembic/versions/*.pyc
 
-# OS
+# ===========================================
+# OS Generated
+# ===========================================
 .DS_Store
 Thumbs.db
 nul
 *.tmp
+desktop.ini
 
+# ===========================================
 # Testing
+# ===========================================
 .pytest_cache/
 .coverage
 htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
 
-# Node
+# ===========================================
+# Node.js / Frontend
+# ===========================================
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
 
-# Run state (PIDs from start_app.ps1)
-.run/
+# Frontend build output (keep in gitignore for local, CI builds fresh)
+frontend/dist/
+
+# ===========================================
+# Docker
+# ===========================================
+*.pid
+
+# ===========================================
+# Misc
+# ===========================================
+*.bak
+*.backup
+.claude/

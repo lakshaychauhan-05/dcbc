@@ -1,144 +1,255 @@
 # Calendar Booking Platform
 
-Multi-service calendar booking system with Google Calendar sync, admin/doctor portals, and an AI chatbot for scheduling assistance.
+A production-ready calendar booking system with Google Calendar sync, admin/doctor portals, and an AI chatbot for scheduling assistance.
 
-## Repository Layout
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    FRONTEND (React + Vite)                   │
+│                        Port: 5173                            │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
+│  │   Chatbot   │  │   Doctor    │  │    Admin    │          │
+│  │   (Home)    │  │   Portal    │  │   Portal    │          │
+│  └─────────────┘  └─────────────┘  └─────────────┘          │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   BACKEND (FastAPI)                          │
+│                      Port: 8000                              │
+│                                                              │
+│  /api/v1/*      → Core Calendar API                         │
+│  /portal/*      → Doctor Portal API                         │
+│  /admin/*       → Admin Portal API                          │
+│  /chatbot/*     → Chatbot API (OpenAI)                      │
+│  /health        → Health Check                              │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          ▼
+                   ┌──────────────┐
+                   │  PostgreSQL  │
+                   └──────────────┘
+```
+
+## Project Structure
+
 ```
 .
-├── app/                     # Core Calendar API (FastAPI)
-│   ├── models/, schemas/, services/, routes/
-│   └── run.py               # Entry for calendar service
-├── admin_portal/            # Admin portal API (FastAPI)
-├── doctor_portal/           # Doctor portal API (FastAPI)
-├── chatbot-service/         # Chatbot API (FastAPI + LLM)
-│   └── run_chatbot.py
-├── admin-portal-frontend/   # Admin UI (Vite + React, port 5500)
-├── doctor-portal-frontend/  # Doctor UI (Vite + React, port 5175)
-├── chatbot-frontend/        # Chatbot UI (CRA, port 3000)
-├── alembic/                 # DB migrations
-├── env.example              # Root env template (shared backends)
-├── docker-compose.yml       # Optional containerized stack
-├── start_project.ps1        # Windows launcher (all services)
-├── start_all_services.sh    # Docker Compose launcher
-└── tests/                   # Pytest suite
+├── app/                    # Unified Backend (FastAPI)
+│   ├── admin/              # Admin portal module
+│   ├── chatbot/            # Chatbot module (OpenAI)
+│   ├── portal/             # Doctor portal module
+│   ├── models/             # SQLAlchemy ORM models
+│   ├── schemas/            # Pydantic request/response schemas
+│   ├── services/           # Business logic
+│   ├── routes/             # Core API routes
+│   ├── middleware/         # Request middleware
+│   ├── utils/              # Utilities
+│   ├── config.py           # Configuration
+│   ├── database.py         # Database connection
+│   ├── security.py         # Authentication
+│   └── main.py             # FastAPI application
+│
+├── frontend/               # Unified Frontend (React + Vite)
+│   ├── src/
+│   │   ├── components/     # Reusable components
+│   │   ├── pages/          # Page components
+│   │   │   ├── admin/      # Admin portal pages
+│   │   │   └── doctor/     # Doctor portal pages
+│   │   ├── services/       # API services
+│   │   ├── hooks/          # Custom React hooks
+│   │   ├── contexts/       # React contexts
+│   │   └── types/          # TypeScript types
+│   ├── Dockerfile          # Frontend Docker build
+│   └── nginx.conf          # Nginx configuration
+│
+├── alembic/                # Database migrations
+├── credentials/            # Google Calendar credentials
+├── scripts/                # Utility scripts
+├── tests/                  # Test suite
+├── docs/                   # Documentation
+│
+├── run.py                  # Application entry point
+├── run_migrations.py       # Migration runner
+├── Dockerfile              # Backend Docker build
+├── docker-compose.yml      # Local development setup
+├── railway.toml            # Railway deployment config
+├── requirements.txt        # Python dependencies
+└── .env.example            # Environment template
 ```
-
-## Services & Default Ports
-- Calendar API (core): `run.py` → 8000
-- Doctor Portal API: `run_doctor_portal.py` → 5000
-- Admin Portal API: `run_admin_portal.py` → 5050
-- Chatbot API: `chatbot-service/run_chatbot.py` → defaults to 8002 (Docker publishes 8001)
-- Frontends: chatbot UI 3000, doctor UI 5175, admin UI 5500
 
 ## Prerequisites
+
 - Python 3.11+
 - Node.js 18+ and npm
-- PostgreSQL 14+ (local) or Docker
-- Google Cloud service account for Calendar API
+- PostgreSQL 14+
+- OpenAI API key (for chatbot)
+- Google Cloud service account (optional, for calendar sync)
 
-## Environment Configuration
-1) Backends: copy `env.example` → `.env` and fill:
-- `DATABASE_URL`, `SERVICE_API_KEY`, `GOOGLE_CALENDAR_*`, `WEBHOOK_BASE_URL`
-- Portal auth: `DOCTOR_PORTAL_*`, `ADMIN_PORTAL_*`, `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`
-- Upstream URLs: `CORE_API_BASE`, `PORTAL_API_BASE`
+## Quick Start
 
-2) Frontends:
-- `admin-portal-frontend/.env.example` → `.env` (`VITE_ADMIN_API_URL`)
-- `doctor-portal-frontend/.env.example` → `.env` (`VITE_PORTAL_API_URL`)
+### 1. Clone and Setup Environment
 
-3) Chatbot service:
-- `chatbot-service/env.example` → `.env` (set `OPENAI_API_KEY`, `CALENDAR_SERVICE_API_KEY`, `PORT`)
-
-## Install Dependencies
 ```bash
-# Python (root services)
+# Clone repository
+git clone https://github.com/lakshaychauhan-05/dcbc.git
+cd dcbc
+
+# Create Python virtual environment
 python -m venv venv
-.\venv\Scripts\activate           # Windows
+source venv/bin/activate  # Linux/Mac
+# or
+.\venv\Scripts\activate   # Windows
+
+# Install Python dependencies
 pip install -r requirements.txt
 
-# Chatbot API
-cd chatbot-service
-pip install -r requirements.txt
-
-# Frontends
-cd admin-portal-frontend  && npm install
-cd ../doctor-portal-frontend && npm install
-cd ../chatbot-frontend && npm install
+# Install frontend dependencies
+cd frontend && npm install && cd ..
 ```
 
-## Database
+### 2. Configure Environment
+
+```bash
+# Copy environment template
+cp .env.example .env
+
+# Edit .env with your configuration
+# Required: DATABASE_URL, SERVICE_API_KEY, OPENAI_API_KEY
+# Required: ADMIN_EMAIL, ADMIN_PASSWORD_HASH, JWT secrets
+```
+
+### 3. Setup Database
+
 ```bash
 # Create database
-createdb calendar_booking_db
+python scripts/create_database.py
 
-# Apply migrations
+# Run migrations
 alembic upgrade head
+
+# (Optional) Populate sample data
+python scripts/populate_sample_data.py
 ```
 
-## Running Locally (manual)
+### 4. Run Application
+
 ```bash
-# Core calendar API
+# Terminal 1: Start backend
 python run.py
 
-# Admin portal API
-python run_admin_portal.py
-
-# Doctor portal API
-python run_doctor_portal.py
-
-# Chatbot API
-cd chatbot-service && python run_chatbot.py
-```
-Frontends (in their folders):
-```bash
-npm run dev -- --host --port 5500   # admin UI
-npm run dev -- --host --port 5175   # doctor UI
-npm start                            # chatbot UI (CRA)
-```
-Windows convenience launcher (starts all backends + frontends in separate terminals):
-```bash
-pwsh ./start_project.ps1
+# Terminal 2: Start frontend
+cd frontend && npm run dev
 ```
 
-## Docker Compose
+Access the application:
+- **Frontend:** http://localhost:5173
+- **Backend API:** http://localhost:8000
+- **API Docs:** http://localhost:8000/docs
+
+## Docker Deployment
+
 ```bash
-cp chatbot-service/env.example chatbot-service/.env   # add OPENAI_API_KEY
+# Build and run all services
 docker-compose up --build -d
+
+# Access:
+# - Frontend: http://localhost:5173
+# - Backend: http://localhost:8000
 ```
-Exposes: calendar API 8000, chatbot API 8001, chatbot UI 3000, Postgres 5432, Redis 6379.
 
-## API Docs & Health
-- Calendar API: `http://localhost:8000/docs` (health: `/health`)
-- Admin Portal API: `http://localhost:5050/docs`
-- Doctor Portal API: `http://localhost:5000/docs`
-- Chatbot API: `http://localhost:{PORT}/docs`
+## API Endpoints
 
-## Authentication
-- Calendar API: `X-API-Key` header (`SERVICE_API_KEY` / `SERVICE_API_KEYS`)
-- Portals: JWT-based auth with secrets in `.env`; Google OAuth configured via `DOCTOR_PORTAL_OAUTH_*`
-- Webhooks: `GOOGLE_CALENDAR_WEBHOOK_SECRET` used to verify inbound calls
+| Prefix | Description | Authentication |
+|--------|-------------|----------------|
+| `/api/v1/*` | Core Calendar API | X-API-Key header |
+| `/portal/*` | Doctor Portal | JWT (Bearer token) |
+| `/admin/*` | Admin Portal | JWT (Bearer token) |
+| `/chatbot/*` | Chatbot API | None (public) |
+| `/health` | Health check | None |
 
-## Google Calendar Notes
-- Database is the source of truth; Calendar is mirrored after DB commits.
-- Webhooks require a public HTTPS `WEBHOOK_BASE_URL`.
-- Each doctor owns a distinct Google Calendar; credentials live at `GOOGLE_CALENDAR_CREDENTIALS_PATH`.
+## Frontend Routes
 
-## Data & Sample Utilities
-- `create_database.py` / `check_db.py` / `populate_sample_data.py` / `export_doctor_data.py`
-- `run_migrations.py` to apply Alembic migrations programmatically.
+| Route | Description |
+|-------|-------------|
+| `/` | Chatbot (main page) |
+| `/doctor/login` | Doctor login |
+| `/doctor/dashboard` | Doctor dashboard |
+| `/doctor/appointments` | Appointments management |
+| `/doctor/patients` | Patient records |
+| `/admin/login` | Admin login |
+| `/admin/dashboard` | Admin dashboard |
+| `/admin/clinics` | Clinic management |
+| `/admin/doctors` | Doctor management |
+
+## Environment Variables
+
+### Required
+
+```bash
+# Database
+DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/calendar_booking
+
+# Authentication
+SERVICE_API_KEY=your-api-key
+DOCTOR_PORTAL_JWT_SECRET=your-doctor-jwt-secret
+ADMIN_PORTAL_JWT_SECRET=your-admin-jwt-secret
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD_HASH=$2b$12$...  # bcrypt hash
+
+# Chatbot
+OPENAI_API_KEY=sk-...
+```
+
+### Optional
+
+```bash
+# Google Calendar (disabled by default)
+DISABLE_CALENDAR_WORKERS=true
+GOOGLE_CALENDAR_CREDENTIALS_PATH=
+GOOGLE_CALENDAR_DELEGATED_ADMIN_EMAIL=
+
+# OAuth (for Google login)
+DOCTOR_PORTAL_OAUTH_CLIENT_ID=
+DOCTOR_PORTAL_OAUTH_CLIENT_SECRET=
+```
+
+See `.env.example` for full configuration reference.
+
+## Scripts
+
+| Script | Description |
+|--------|-------------|
+| `python run.py` | Start backend server |
+| `python run_migrations.py` | Run database migrations |
+| `python scripts/create_database.py` | Create PostgreSQL database |
+| `python scripts/populate_sample_data.py` | Seed sample data |
+| `python scripts/generate_admin_password.py` | Generate admin password hash |
+| `python scripts/check_db.py` | Verify database connection |
+| `python scripts/verify_config.py` | Validate configuration |
 
 ## Testing
+
 ```bash
-pytest                              # unit tests
-python scripts/test_integration.py  # integration tests
-```
-Frontends:
-```bash
-cd chatbot-frontend && npm test
+# Run backend tests
+pytest
+
+# Run integration tests
+python scripts/test_integration.py
 ```
 
-## Production Tips
-- Use HTTPS, rotate API keys, and set strict CORS.
-- Configure connection pooling and backups for PostgreSQL.
-- Monitor calendar sync workers (`CALENDAR_SYNC_*`, `CALENDAR_RECONCILE_*`) and webhook health.
-- Set `DEBUG=False` and provide strong `ADMIN_PASSWORD_HASH`/JWT secrets before deploying.
+## Deployment
+
+See [RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md) for Railway deployment guide.
+
+### Quick Railway Setup
+
+1. Create PostgreSQL database on Railway
+2. Deploy backend from root directory
+3. Deploy frontend from `frontend/` directory
+4. Configure environment variables
+
+## License
+
+MIT
