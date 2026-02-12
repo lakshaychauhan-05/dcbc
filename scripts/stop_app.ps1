@@ -1,6 +1,6 @@
 <#
-Stop all services started by start_app.ps1 or start_project.ps1.
-Reads PIDs from .run/*.pid (start_app.ps1) or .project-processes.json (start_project.ps1).
+Stop all services started by start_app.ps1.
+Reads PIDs from .run/*.pid.
 #>
 
 $ErrorActionPreference = "Stop"
@@ -12,7 +12,12 @@ $stateFile = Join-Path $BaseDir ".project-processes.json"
 
 $stopped = 0
 
-# 1) Stop processes from start_project.ps1 (.project-processes.json)
+Write-Host "=====================================" -ForegroundColor Cyan
+Write-Host "Stopping Calendar Booking Platform" -ForegroundColor Cyan
+Write-Host "=====================================" -ForegroundColor Cyan
+Write-Host ""
+
+# 1) Stop processes from start_project.ps1 (.project-processes.json) - legacy support
 if (Test-Path $stateFile) {
     try {
         $processes = Get-Content -Path $stateFile -Raw -ErrorAction Stop | ConvertFrom-Json
@@ -23,21 +28,17 @@ if (Test-Path $stateFile) {
                     try {
                         $p = Get-Process -Id $pidVal -ErrorAction Stop
                         Stop-Process -Id $pidVal -Force -ErrorAction Stop
-                        Write-Host "Stopped $($proc.Name) (PID $pidVal)" -ForegroundColor Yellow
+                        Write-Host "[STOPPED] $($proc.Name) (PID $pidVal)" -ForegroundColor Yellow
                         $stopped++
                     } catch {
-                        Write-Host "Process $($proc.Name) (PID $pidVal) not running." -ForegroundColor DarkGray
+                        Write-Host "[SKIP] $($proc.Name) (PID $pidVal) - not running" -ForegroundColor DarkGray
                     }
                 }
             }
         }
         Remove-Item $stateFile -Force -ErrorAction SilentlyContinue
-        # Remove .run/*.pid too so we don't try to stop same PIDs again below
-        if (Test-Path $runDir) {
-            Get-ChildItem -Path $runDir -Filter "*.pid" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-        }
     } catch {
-        Write-Host "Could not read or stop from .project-processes.json: $($_.Exception.Message)" -ForegroundColor DarkYellow
+        Write-Host "Could not read .project-processes.json: $($_.Exception.Message)" -ForegroundColor DarkYellow
     }
 }
 
@@ -49,21 +50,48 @@ if (Test-Path $runDir) {
         if ($procId) {
             try {
                 $p = Get-Process -Id $procId -ErrorAction Stop
+
+                # Also kill child processes (important for npm/node)
+                $childProcesses = Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $procId }
+                foreach ($child in $childProcesses) {
+                    try {
+                        Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue
+                    } catch {}
+                }
+
                 Stop-Process -Id $procId -Force -ErrorAction Stop
-                Write-Host "Stopped $($pf.BaseName) (PID $procId)" -ForegroundColor Yellow
+                Write-Host "[STOPPED] $($pf.BaseName) (PID $procId)" -ForegroundColor Yellow
                 $stopped++
             } catch {
-                Write-Host "Process PID $procId from $($pf.Name) not running." -ForegroundColor DarkGray
+                Write-Host "[SKIP] $($pf.BaseName) (PID $procId) - not running" -ForegroundColor DarkGray
             }
         }
         Remove-Item $pf.FullName -ErrorAction SilentlyContinue
     }
 }
 
+# 3) Also try to stop any orphaned processes on known ports
+$portsToCheck = @(8000, 5173)
+foreach ($port in $portsToCheck) {
+    try {
+        $connections = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+        foreach ($conn in $connections) {
+            try {
+                $proc = Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
+                if ($proc) {
+                    Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
+                    Write-Host "[STOPPED] Process on port $port (PID $($conn.OwningProcess))" -ForegroundColor Yellow
+                    $stopped++
+                }
+            } catch {}
+        }
+    } catch {}
+}
+
+Write-Host ""
 if ($stopped -eq 0) {
-    if (-Not (Test-Path $stateFile) -and (-Not (Test-Path $runDir) -or -Not (Get-ChildItem -Path $runDir -Filter "*.pid" -ErrorAction SilentlyContinue))) {
-        Write-Host "No PID files found; nothing to stop. Run start_app.ps1 or start_project.ps1 first." -ForegroundColor Yellow
-    }
+    Write-Host "No running services found." -ForegroundColor DarkGray
 } else {
     Write-Host "Done. Stopped $stopped process(es)." -ForegroundColor Green
 }
+Write-Host ""
