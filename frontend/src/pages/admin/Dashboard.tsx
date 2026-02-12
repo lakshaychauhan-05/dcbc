@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { adminApi } from '../../services/api';
 
 interface Stats {
-  total_clinics: number;
-  total_doctors: number;
-  total_patients: number;
-  total_appointments: number;
+  clinics: number;
+  doctors: number;
+  patients: number;
+  appointments: number;
 }
 
 const Dashboard = () => {
@@ -38,7 +38,7 @@ const Dashboard = () => {
   const statCards = [
     {
       title: 'Total Clinics',
-      value: stats?.total_clinics || 0,
+      value: stats?.clinics || 0,
       color: '#3b82f6',
       icon: (
         <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -48,7 +48,7 @@ const Dashboard = () => {
     },
     {
       title: 'Total Doctors',
-      value: stats?.total_doctors || 0,
+      value: stats?.doctors || 0,
       color: '#10b981',
       icon: (
         <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -58,7 +58,7 @@ const Dashboard = () => {
     },
     {
       title: 'Total Patients',
-      value: stats?.total_patients || 0,
+      value: stats?.patients || 0,
       color: '#8b5cf6',
       icon: (
         <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -68,7 +68,7 @@ const Dashboard = () => {
     },
     {
       title: 'Total Appointments',
-      value: stats?.total_appointments || 0,
+      value: stats?.appointments || 0,
       color: '#f59e0b',
       icon: (
         <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">

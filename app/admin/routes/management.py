@@ -92,6 +92,7 @@ class DoctorResponse(BaseModel):
     email: str
     name: str
     clinic_id: str
+    clinic_name: Optional[str] = None
     specialization: str
     experience_years: int
     languages: List[str]
@@ -101,6 +102,7 @@ class DoctorResponse(BaseModel):
     google_calendar_id: Optional[str] = None
     slot_duration_minutes: int
     is_active: bool
+    has_portal_account: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
     portal_account_created: Optional[bool] = None
@@ -134,8 +136,8 @@ def list_clinics(
             id=str(c.id),
             name=c.name,
             address=c.address,
-            phone_number=c.phone_number,
-            email=c.email,
+            phone_number=getattr(c, 'phone_number', None),
+            email=getattr(c, 'email', None),
             is_active=c.is_active,
             created_at=c.created_at,
             updated_at=c.updated_at,
@@ -154,8 +156,8 @@ def get_clinic(clinic_id: UUID, db: Session = Depends(get_db)):
         id=str(clinic.id),
         name=clinic.name,
         address=clinic.address,
-        phone_number=clinic.phone_number,
-        email=clinic.email,
+        phone_number=getattr(clinic, 'phone_number', None),
+        email=getattr(clinic, 'email', None),
         is_active=clinic.is_active,
         created_at=clinic.created_at,
         updated_at=clinic.updated_at,
@@ -168,8 +170,6 @@ def create_clinic(payload: ClinicCreate, db: Session = Depends(get_db)):
     clinic = Clinic(
         name=payload.name,
         address=payload.address,
-        phone_number=payload.phone_number,
-        email=payload.email,
         is_active=payload.is_active,
     )
     db.add(clinic)
@@ -179,8 +179,8 @@ def create_clinic(payload: ClinicCreate, db: Session = Depends(get_db)):
         id=str(clinic.id),
         name=clinic.name,
         address=clinic.address,
-        phone_number=clinic.phone_number,
-        email=clinic.email,
+        phone_number=getattr(clinic, 'phone_number', None),
+        email=getattr(clinic, 'email', None),
         is_active=clinic.is_active,
         created_at=clinic.created_at,
         updated_at=clinic.updated_at,
@@ -198,9 +198,10 @@ def update_clinic(clinic_id: UUID, payload: ClinicUpdate, db: Session = Depends(
         clinic.name = payload.name
     if payload.address is not None:
         clinic.address = payload.address
-    if payload.phone_number is not None:
+    # phone_number and email fields are optional - only update if model supports them
+    if payload.phone_number is not None and hasattr(clinic, 'phone_number'):
         clinic.phone_number = payload.phone_number
-    if payload.email is not None:
+    if payload.email is not None and hasattr(clinic, 'email'):
         clinic.email = payload.email
     if payload.is_active is not None:
         clinic.is_active = payload.is_active
@@ -213,8 +214,8 @@ def update_clinic(clinic_id: UUID, payload: ClinicUpdate, db: Session = Depends(
         id=str(clinic.id),
         name=clinic.name,
         address=clinic.address,
-        phone_number=clinic.phone_number,
-        email=clinic.email,
+        phone_number=getattr(clinic, 'phone_number', None),
+        email=getattr(clinic, 'email', None),
         is_active=clinic.is_active,
         created_at=clinic.created_at,
         updated_at=clinic.updated_at,
@@ -258,20 +259,30 @@ def list_doctors(
     if is_active is not None:
         query = query.filter(Doctor.is_active == is_active)
     doctors = query.offset(skip).limit(limit).all()
+
+    # Get all doctor emails that have portal accounts
+    doctor_emails = [d.email for d in doctors]
+    portal_accounts = db.query(DoctorAccount.doctor_email).filter(
+        DoctorAccount.doctor_email.in_(doctor_emails)
+    ).all()
+    portal_emails = {a.doctor_email for a in portal_accounts}
+
     return [
         DoctorResponse(
             email=d.email,
             name=d.name,
             clinic_id=str(d.clinic_id),
+            clinic_name=d.clinic.name if d.clinic else None,
             specialization=d.specialization,
             experience_years=d.experience_years,
             languages=d.languages,
             consultation_type=d.consultation_type,
             timezone=d.timezone,
             phone_number=d.phone_number,
-            google_calendar_id=d.google_calendar_id,
+            google_calendar_id=getattr(d, 'google_calendar_id', d.email),
             slot_duration_minutes=d.slot_duration_minutes,
             is_active=d.is_active,
+            has_portal_account=d.email in portal_emails,
             created_at=d.created_at,
             updated_at=d.updated_at,
         )
@@ -285,19 +296,27 @@ def get_doctor(doctor_email: str, db: Session = Depends(get_db)):
     doctor = db.query(Doctor).filter(Doctor.email == doctor_email.lower()).first()
     if not doctor:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
+
+    # Check if portal account exists
+    has_portal = db.query(DoctorAccount).filter(
+        DoctorAccount.doctor_email == doctor_email.lower()
+    ).first() is not None
+
     return DoctorResponse(
         email=doctor.email,
         name=doctor.name,
         clinic_id=str(doctor.clinic_id),
+        clinic_name=doctor.clinic.name if doctor.clinic else None,
         specialization=doctor.specialization,
         experience_years=doctor.experience_years,
         languages=doctor.languages,
         consultation_type=doctor.consultation_type,
         timezone=doctor.timezone,
         phone_number=doctor.phone_number,
-        google_calendar_id=doctor.google_calendar_id,
+        google_calendar_id=getattr(doctor, 'google_calendar_id', doctor.email),
         slot_duration_minutes=doctor.slot_duration_minutes,
         is_active=doctor.is_active,
+        has_portal_account=has_portal,
         created_at=doctor.created_at,
         updated_at=doctor.updated_at,
     )
@@ -322,20 +341,27 @@ def create_doctor(payload: DoctorCreate, db: Session = Depends(get_db)):
             detail="Doctor with this email already exists",
         )
 
-    doctor = Doctor(
-        email=payload.email.lower(),
-        name=payload.name,
-        clinic_id=payload.clinic_id,
-        specialization=payload.specialization,
-        experience_years=payload.experience_years,
-        languages=payload.languages,
-        consultation_type=payload.consultation_type,
-        timezone=payload.timezone,
-        phone_number=payload.phone_number,
-        google_calendar_id=payload.google_calendar_id or payload.email.lower(),
-        slot_duration_minutes=payload.slot_duration_minutes,
-        is_active=payload.is_active,
-    )
+    # Build doctor data - only include fields that exist in the model
+    doctor_data = {
+        "email": payload.email.lower(),
+        "name": payload.name,
+        "clinic_id": payload.clinic_id,
+        "specialization": payload.specialization,
+        "experience_years": payload.experience_years,
+        "languages": payload.languages,
+        "consultation_type": payload.consultation_type,
+        "timezone": payload.timezone,
+        "phone_number": payload.phone_number,
+        "slot_duration_minutes": payload.slot_duration_minutes,
+        "is_active": payload.is_active,
+        "working_days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+        "working_hours": {"start": "09:00", "end": "17:00"},
+    }
+    # Only add google_calendar_id if the Doctor model supports it
+    if hasattr(Doctor, 'google_calendar_id'):
+        doctor_data["google_calendar_id"] = payload.google_calendar_id or payload.email.lower()
+
+    doctor = Doctor(**doctor_data)
     db.add(doctor)
     db.commit()
     db.refresh(doctor)
@@ -368,15 +394,17 @@ def create_doctor(payload: DoctorCreate, db: Session = Depends(get_db)):
         email=doctor.email,
         name=doctor.name,
         clinic_id=str(doctor.clinic_id),
+        clinic_name=doctor.clinic.name if doctor.clinic else None,
         specialization=doctor.specialization,
         experience_years=doctor.experience_years,
         languages=doctor.languages,
         consultation_type=doctor.consultation_type,
         timezone=doctor.timezone,
         phone_number=doctor.phone_number,
-        google_calendar_id=doctor.google_calendar_id,
+        google_calendar_id=getattr(doctor, 'google_calendar_id', doctor.email),
         slot_duration_minutes=doctor.slot_duration_minutes,
         is_active=doctor.is_active,
+        has_portal_account=portal_account_created,
         created_at=doctor.created_at,
         updated_at=doctor.updated_at,
         portal_account_created=portal_account_created,
@@ -411,7 +439,7 @@ def update_doctor(doctor_email: str, payload: DoctorUpdate, db: Session = Depend
         doctor.timezone = payload.timezone
     if payload.phone_number is not None:
         doctor.phone_number = payload.phone_number
-    if payload.google_calendar_id is not None:
+    if payload.google_calendar_id is not None and hasattr(doctor, 'google_calendar_id'):
         doctor.google_calendar_id = payload.google_calendar_id
     if payload.slot_duration_minutes is not None:
         doctor.slot_duration_minutes = payload.slot_duration_minutes
@@ -422,19 +450,26 @@ def update_doctor(doctor_email: str, payload: DoctorUpdate, db: Session = Depend
     db.commit()
     db.refresh(doctor)
 
+    # Check if portal account exists
+    has_portal = db.query(DoctorAccount).filter(
+        DoctorAccount.doctor_email == doctor_email.lower()
+    ).first() is not None
+
     return DoctorResponse(
         email=doctor.email,
         name=doctor.name,
         clinic_id=str(doctor.clinic_id),
+        clinic_name=doctor.clinic.name if doctor.clinic else None,
         specialization=doctor.specialization,
         experience_years=doctor.experience_years,
         languages=doctor.languages,
         consultation_type=doctor.consultation_type,
         timezone=doctor.timezone,
         phone_number=doctor.phone_number,
-        google_calendar_id=doctor.google_calendar_id,
+        google_calendar_id=getattr(doctor, 'google_calendar_id', doctor.email),
         slot_duration_minutes=doctor.slot_duration_minutes,
         is_active=doctor.is_active,
+        has_portal_account=has_portal,
         created_at=doctor.created_at,
         updated_at=doctor.updated_at,
     )
