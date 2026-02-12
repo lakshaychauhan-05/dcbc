@@ -28,5 +28,14 @@ python-dotenv==1.0.1
 # SMS notifications
 twilio==9.0.0
 
+# Chatbot (OpenAI)
+openai>=1.0.0
+
+# Redis (optional - for chatbot conversation state)
+redis>=5.0.0
+
+# Date parsing utilities
+python-dateutil>=2.8.0
+
 # Logging (built-in, but explicit for clarity)
 # Python 3.11 includes logging module
