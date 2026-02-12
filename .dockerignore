@@ -1,0 +1,66 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+ENV/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment files (will be set via Railway)
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Frontend (not needed for backend)
+frontend/
+admin-portal-frontend/
+doctor-portal-frontend/
+chatbot-frontend/
+
+# Node (not needed for backend)
+node_modules/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Scripts (not needed in container)
+scripts/
+
+# Tests (not needed in production)
+tests/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/
+
+# Temporary files
+*.tmp
+*.bak

@@ -1,0 +1,42 @@
+# Dependencies (will be installed fresh)
+node_modules/
+
+# Build output (will be built fresh)
+dist/
+
+# Git
+.git
+.gitignore
+
+# Environment files (VITE_API_URL set via build args)
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test files
+coverage/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+
+# Documentation
+*.md
+
+# Temporary files
+*.tmp
+*.bak

@@ -1,5 +1,8 @@
-# Railway Configuration for Calendar Booking Backend
-# Unified backend with Core API + Doctor Portal + Admin Portal + Chatbot
+# ===========================================
+# Railway Configuration - Backend
+# ===========================================
+# Unified backend: Core API + Doctor Portal + Admin Portal + Chatbot
+# Deploy from: Root directory (/)
 
 [build]
 builder = "dockerfile"

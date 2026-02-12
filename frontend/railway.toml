@@ -1,5 +1,11 @@
-# Railway Configuration for Calendar Booking Frontend
-# Unified React frontend with Chatbot + Doctor Portal + Admin Portal
+# ===========================================
+# Railway Configuration - Frontend
+# ===========================================
+# Unified React frontend: Chatbot + Doctor Portal + Admin Portal
+# Deploy from: frontend/ directory
+#
+# IMPORTANT: Set VITE_API_URL as a build variable in Railway
+# pointing to your backend service URL.
 
 [build]
 builder = "dockerfile"
