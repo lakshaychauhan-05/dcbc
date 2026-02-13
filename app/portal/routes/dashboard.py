@@ -7,7 +7,7 @@ from datetime import date, datetime, timezone
 from uuid import UUID
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, noload
 
 from app.portal.dependencies import get_current_doctor_account, get_portal_db
 from app.portal.schemas import (
@@ -276,7 +276,7 @@ def cancel_appointment(
                 ok = cal.delete_event(doctor_email=doctor_email, event_id=event_id)
 
                 # Update sync status in database
-                appt = bg_db.query(Appointment).filter(Appointment.id == appointment_id).first()
+                appt = bg_db.query(Appointment).options(noload('*')).filter(Appointment.id == appointment_id).first()
                 if appt:
                     if ok:
                         appt.calendar_sync_status = "SYNCED"
@@ -291,7 +291,7 @@ def cancel_appointment(
             except Exception as e:
                 logger.error(f"Failed to sync calendar delete: {e}")
                 try:
-                    appt = bg_db.query(Appointment).filter(Appointment.id == appointment_id).first()
+                    appt = bg_db.query(Appointment).options(noload('*')).filter(Appointment.id == appointment_id).first()
                     if appt:
                         appt.calendar_sync_status = "FAILED"
                         appt.calendar_sync_last_error = str(e)[:500]
@@ -510,7 +510,7 @@ def reschedule_appointment(
                     logger.info(f"Calendar create synced for appointment {appointment_id}")
 
                 # Update sync status in database
-                appt = bg_db.query(Appointment).filter(Appointment.id == appointment_id).first()
+                appt = bg_db.query(Appointment).options(noload('*')).filter(Appointment.id == appointment_id).first()
                 if appt:
                     if ok:
                         appt.calendar_sync_status = "SYNCED"
@@ -525,7 +525,7 @@ def reschedule_appointment(
             except Exception as e:
                 logger.error(f"Failed to sync calendar for reschedule: {e}")
                 try:
-                    appt = bg_db.query(Appointment).filter(Appointment.id == appointment_id).first()
+                    appt = bg_db.query(Appointment).options(noload('*')).filter(Appointment.id == appointment_id).first()
                     if appt:
                         appt.calendar_sync_status = "FAILED"
                         appt.calendar_sync_last_error = str(e)[:500]
