@@ -73,7 +73,16 @@ Set backend's `CORS_ALLOW_ORIGINS` to your frontend URL.
 | `DEBUG` | `false` | Enable debug mode |
 | `DEFAULT_TIMEZONE` | `Asia/Kolkata` | Timezone |
 | `OPENAI_MODEL` | `gpt-4o-mini` | OpenAI model |
-| `DISABLE_CALENDAR_WORKERS` | `true` | Disable Google Calendar |
+| `DISABLE_CALENDAR_WORKERS` | `true` | Set `false` to enable Google Calendar sync |
+
+### Backend (SMS Notifications - Optional)
+
+| Variable | Description |
+|----------|-------------|
+| `SMS_NOTIFICATIONS_ENABLED` | Set `true` to enable SMS (default: `false`) |
+| `TWILIO_ACCOUNT_SID` | Your Twilio Account SID |
+| `TWILIO_AUTH_TOKEN` | Your Twilio Auth Token |
+| `TWILIO_PHONE_NUMBER` | Your Twilio Phone Number (e.g., `+1234567890`) |
 
 ### Frontend (Required)
 
@@ -152,6 +161,30 @@ DOCTOR_PORTAL_OAUTH_CLIENT_SECRET=your-secret
 DOCTOR_PORTAL_OAUTH_REDIRECT_URI=https://<backend>.railway.app/portal/auth/oauth/google/callback
 DOCTOR_PORTAL_FRONTEND_CALLBACK_URL=https://<frontend>.railway.app/doctor/oauth/callback
 ```
+
+---
+
+## Post-Deployment
+
+### Run Database Migrations
+
+The backend automatically runs migrations on startup. If you need to run them manually:
+
+```bash
+# Via Railway CLI
+railway run alembic upgrade head
+
+# Or connect to the backend shell and run
+python run_migrations.py
+```
+
+### Verify Deployment
+
+After deployment, check these endpoints:
+
+1. **Backend Health:** `https://<backend>.railway.app/health`
+2. **API Docs:** `https://<backend>.railway.app/docs`
+3. **Frontend:** `https://<frontend>.railway.app/`
 
 ---
 

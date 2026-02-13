@@ -22,8 +22,8 @@ COPY alembic.ini .
 COPY run.py .
 COPY run_migrations.py .
 
-# Copy credentials directory if exists (for Google Calendar)
-COPY credentials/ ./credentials/
+# Create credentials directory (will be mounted or populated separately)
+RUN mkdir -p ./credentials
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
