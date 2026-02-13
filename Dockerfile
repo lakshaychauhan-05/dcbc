@@ -22,19 +22,20 @@ COPY alembic.ini .
 COPY run.py .
 COPY run_migrations.py .
 
-# Create credentials directory (will be mounted or populated separately)
-RUN mkdir -p ./credentials
+# Create credentials and logs directories
+RUN mkdir -p ./credentials ./logs
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Expose port (Railway sets PORT env var)
+# Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+# Health check - allow 60s for migrations to complete before first check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
-# Run migrations and start server
-CMD python run_migrations.py && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Run migrations via alembic directly (avoids .env file requirement of run_migrations.py)
+# Then start the uvicorn server
+CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}

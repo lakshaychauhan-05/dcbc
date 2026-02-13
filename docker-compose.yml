@@ -4,6 +4,7 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: calendar_booking
       POSTGRES_USER: postgres
@@ -17,6 +18,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
   # Unified Backend API
   # Includes: Core Calendar API + Doctor Portal + Admin Portal + Chatbot
@@ -24,8 +26,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
     environment:
-      # Database
+      # Database - uses postgres service hostname (not localhost)
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/calendar_booking
 
       # Server
@@ -39,7 +42,7 @@ services:
       API_KEY_RATE_LIMIT_BURST: 30
 
       # Doctor Portal Auth
-      DOCTOR_PORTAL_JWT_SECRET: ${DOCTOR_PORTAL_JWT_SECRET:-doctor-jwt-secret-dev}
+      DOCTOR_PORTAL_JWT_SECRET: ${DOCTOR_PORTAL_JWT_SECRET:-doctor-jwt-secret-change-in-prod}
       DOCTOR_PORTAL_JWT_ALGORITHM: HS256
       DOCTOR_PORTAL_OAUTH_CLIENT_ID: ${DOCTOR_PORTAL_OAUTH_CLIENT_ID:-}
       DOCTOR_PORTAL_OAUTH_CLIENT_SECRET: ${DOCTOR_PORTAL_OAUTH_CLIENT_SECRET:-}
@@ -47,10 +50,11 @@ services:
       DOCTOR_PORTAL_FRONTEND_CALLBACK_URL: ${DOCTOR_PORTAL_FRONTEND_CALLBACK_URL:-http://localhost:5173/doctor/oauth/callback}
 
       # Admin Portal Auth
-      ADMIN_PORTAL_JWT_SECRET: ${ADMIN_PORTAL_JWT_SECRET:-admin-jwt-secret-dev}
+      ADMIN_PORTAL_JWT_SECRET: ${ADMIN_PORTAL_JWT_SECRET:-admin-jwt-secret-change-in-prod}
       ADMIN_PORTAL_JWT_ALGORITHM: HS256
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
 
       # Chatbot (OpenAI)
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -60,23 +64,28 @@ services:
       MAX_CONVERSATION_TURNS: ${MAX_CONVERSATION_TURNS:-10}
       CONVERSATION_TIMEOUT_MINUTES: ${CONVERSATION_TIMEOUT_MINUTES:-30}
 
-      # Google Calendar (disabled by default for local dev)
+      # Google Calendar (disabled by default)
       DISABLE_CALENDAR_WORKERS: ${DISABLE_CALENDAR_WORKERS:-true}
       GOOGLE_CALENDAR_CREDENTIALS_PATH: ${GOOGLE_CALENDAR_CREDENTIALS_PATH:-}
       GOOGLE_CALENDAR_DELEGATED_ADMIN_EMAIL: ${GOOGLE_CALENDAR_DELEGATED_ADMIN_EMAIL:-}
 
-      # SMS Notifications (disabled by default for local dev)
+      # SMS Notifications (disabled by default)
       SMS_NOTIFICATIONS_ENABLED: ${SMS_NOTIFICATIONS_ENABLED:-false}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER:-}
 
-      # CORS
-      CORS_ALLOW_ORIGINS: http://localhost:5173,http://localhost:3000
+      # Clinic Info
+      CLINIC_NAME: ${CLINIC_NAME:-My Clinic}
+
+      # CORS - frontend is on localhost:5173 (nginx port 80 mapped to 5173)
+      CORS_ALLOW_ORIGINS: http://localhost:5173,http://localhost:3000,http://localhost
+
     ports:
       - "8000:8000"
     volumes:
       - ./credentials:/app/credentials:ro
+      - backend_logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,25 +93,33 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
+      # Allow 90s for migrations + uvicorn startup before first health check
+      start_period: 90s
       retries: 3
 
   # Unified Frontend
-  # Includes: Chatbot + Doctor Portal + Admin Portal
+  # Includes: Chatbot (home) + Doctor Portal + Admin Portal
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: http://localhost:8000
+        # VITE_API_URL is baked into the JS bundle at build time.
+        # Browser calls this URL directly, so use localhost (host port 8000).
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    restart: unless-stopped
     ports:
       - "5173:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
       interval: 30s
       timeout: 10s
+      start_period: 10s
       retries: 3
 
 volumes:
   postgres_data:
+  backend_logs:
