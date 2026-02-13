@@ -9,7 +9,7 @@ from uuid import UUID
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel, EmailStr, Field
 
 from app.admin.dependencies import get_current_admin
@@ -136,8 +136,8 @@ def list_clinics(
             id=str(c.id),
             name=c.name,
             address=c.address,
-            phone_number=getattr(c, 'phone_number', None),
-            email=getattr(c, 'email', None),
+            phone_number=c.phone_number,
+            email=c.email,
             is_active=c.is_active,
             created_at=c.created_at,
             updated_at=c.updated_at,
@@ -156,8 +156,8 @@ def get_clinic(clinic_id: UUID, db: Session = Depends(get_db)):
         id=str(clinic.id),
         name=clinic.name,
         address=clinic.address,
-        phone_number=getattr(clinic, 'phone_number', None),
-        email=getattr(clinic, 'email', None),
+        phone_number=clinic.phone_number,
+        email=clinic.email,
         is_active=clinic.is_active,
         created_at=clinic.created_at,
         updated_at=clinic.updated_at,
@@ -170,6 +170,8 @@ def create_clinic(payload: ClinicCreate, db: Session = Depends(get_db)):
     clinic = Clinic(
         name=payload.name,
         address=payload.address,
+        phone_number=payload.phone_number,
+        email=payload.email,
         is_active=payload.is_active,
     )
     db.add(clinic)
@@ -179,8 +181,8 @@ def create_clinic(payload: ClinicCreate, db: Session = Depends(get_db)):
         id=str(clinic.id),
         name=clinic.name,
         address=clinic.address,
-        phone_number=getattr(clinic, 'phone_number', None),
-        email=getattr(clinic, 'email', None),
+        phone_number=clinic.phone_number,
+        email=clinic.email,
         is_active=clinic.is_active,
         created_at=clinic.created_at,
         updated_at=clinic.updated_at,
@@ -198,10 +200,9 @@ def update_clinic(clinic_id: UUID, payload: ClinicUpdate, db: Session = Depends(
         clinic.name = payload.name
     if payload.address is not None:
         clinic.address = payload.address
-    # phone_number and email fields are optional - only update if model supports them
-    if payload.phone_number is not None and hasattr(clinic, 'phone_number'):
+    if payload.phone_number is not None:
         clinic.phone_number = payload.phone_number
-    if payload.email is not None and hasattr(clinic, 'email'):
+    if payload.email is not None:
         clinic.email = payload.email
     if payload.is_active is not None:
         clinic.is_active = payload.is_active
@@ -214,8 +215,8 @@ def update_clinic(clinic_id: UUID, payload: ClinicUpdate, db: Session = Depends(
         id=str(clinic.id),
         name=clinic.name,
         address=clinic.address,
-        phone_number=getattr(clinic, 'phone_number', None),
-        email=getattr(clinic, 'email', None),
+        phone_number=clinic.phone_number,
+        email=clinic.email,
         is_active=clinic.is_active,
         created_at=clinic.created_at,
         updated_at=clinic.updated_at,
@@ -253,7 +254,8 @@ def list_doctors(
     db: Session = Depends(get_db),
 ):
     """List all doctors with optional filtering."""
-    query = db.query(Doctor)
+    # Use joinedload to prevent N+1 query issue when accessing clinic.name
+    query = db.query(Doctor).options(joinedload(Doctor.clinic))
     if clinic_id is not None:
         query = query.filter(Doctor.clinic_id == clinic_id)
     if is_active is not None:
@@ -293,7 +295,8 @@ def list_doctors(
 @router.get("/doctors/{doctor_email}", response_model=DoctorResponse)
 def get_doctor(doctor_email: str, db: Session = Depends(get_db)):
     """Get a single doctor by email."""
-    doctor = db.query(Doctor).filter(Doctor.email == doctor_email.lower()).first()
+    # Use joinedload to prevent N+1 query when accessing clinic.name
+    doctor = db.query(Doctor).options(joinedload(Doctor.clinic)).filter(Doctor.email == doctor_email.lower()).first()
     if not doctor:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
 
@@ -366,6 +369,10 @@ def create_doctor(payload: DoctorCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(doctor)
 
+    # Eager load clinic to avoid N+1 query in response
+    # The clinic is already validated above, so we can use it directly
+    doctor.clinic = clinic
+
     portal_account_created = False
     portal_login_ready = False
 
@@ -415,7 +422,8 @@ def create_doctor(payload: DoctorCreate, db: Session = Depends(get_db)):
 @router.put("/doctors/{doctor_email}", response_model=DoctorResponse)
 def update_doctor(doctor_email: str, payload: DoctorUpdate, db: Session = Depends(get_db)):
     """Update a doctor."""
-    doctor = db.query(Doctor).filter(Doctor.email == doctor_email.lower()).first()
+    # Use joinedload to prevent N+1 query when accessing clinic.name in response
+    doctor = db.query(Doctor).options(joinedload(Doctor.clinic)).filter(Doctor.email == doctor_email.lower()).first()
     if not doctor:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
 

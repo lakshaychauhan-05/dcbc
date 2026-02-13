@@ -20,6 +20,8 @@ class Clinic(Base):
     name = Column(String(255), nullable=False, unique=True)
     timezone = Column(String(64), nullable=False, default="UTC")
     address = Column(String(512), nullable=True)
+    phone_number = Column(String(50), nullable=True)
+    email = Column(String(255), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True, index=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

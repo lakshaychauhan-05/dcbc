@@ -362,6 +362,16 @@ def complete_appointment(
             detail="Appointment is already completed",
         )
 
+    # Validate appointment is not in the future (cannot complete future appointments)
+    appointment_datetime = datetime.combine(appointment.date, appointment.start_time)
+    # Make it timezone-aware using UTC
+    appointment_datetime_utc = appointment_datetime.replace(tzinfo=timezone.utc)
+    if appointment_datetime_utc > datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot complete future appointments. Wait until the appointment time has passed.",
+        )
+
     appointment.status = AppointmentStatus.COMPLETED
     appointment.updated_at = datetime.now(timezone.utc)
     if payload.notes:
