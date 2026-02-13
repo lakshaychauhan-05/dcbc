@@ -183,6 +183,7 @@ class BookingService:
             apt_id_str = str(appointment.id)
             calendar_sync_queue.enqueue_create(apt_id_str)
             calendar_sync_queue.trigger_immediate_sync(apt_id_str, "CREATE")
+            db.refresh(appointment)  # Reload to get updated google_calendar_event_id and sync status
 
             # Send SMS notifications to both doctor and patient (non-blocking)
             try:

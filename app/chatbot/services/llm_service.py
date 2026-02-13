@@ -80,14 +80,18 @@ Return only a JSON object with the following structure:
     def _create_entity_prompt(self) -> str:
         """Create prompt template for entity extraction."""
         from datetime import datetime
-        current_year = datetime.now().year
+        current_year = str(datetime.now().year)
 
-        template = f"""Extract relevant entities from the user's message for appointment booking.
+        # NOTE: This must be a plain string (NOT an f-string).
+        # It uses {history} and {message} as .format() placeholders.
+        # JSON example braces are doubled ({{ }}) so .format() leaves them as literal { }.
+        # current_year is substituted via .replace() to avoid any f-string/format conflicts.
+        template = """Extract relevant entities from the user's message for appointment booking.
 
-IMPORTANT: The current year is {current_year}. When extracting dates without an explicit year (like "10th feb", "march 5"), always assume the current year {current_year} or the next occurrence of that date.
+IMPORTANT: The current year is CURRENT_YEAR. When extracting dates without an explicit year (like "10th feb", "march 5"), always assume the current year CURRENT_YEAR or the next occurrence of that date.
 
 Available entity types:
-- date: Dates (e.g., "tomorrow", "next Monday", "{current_year}-02-15", "10th feb" -> "{current_year}-02-10")
+- date: Dates (e.g., "tomorrow", "next Monday", "CURRENT_YEAR-02-15", "10th feb" -> "CURRENT_YEAR-02-10")
 - time: Times (e.g., "2 PM", "14:00", "morning")
 - doctor_name: Doctor names (e.g., "Dr. Smith", "Dr. Sarah Johnson")
 - specialization: Medical specialties (e.g., "cardiology", "dermatology", "skin specialist")
@@ -105,9 +109,9 @@ CRITICAL GUIDELINES for distinguishing entities:
 6. If user mentions a specialty earlier (e.g., "dermatology" or "skin") and continues the conversation, do NOT change it to a different specialty unless explicitly requested.
 
 Conversation history (most recent last):
-{{history}}
+{history}
 
-User message: {{message}}
+User message: {message}
 
 Return a JSON array of extracted entities:
 [
@@ -120,7 +124,7 @@ Return a JSON array of extracted entities:
 
 Return empty array if no entities found."""
 
-        return template
+        return template.replace("CURRENT_YEAR", current_year)
 
     def _create_response_prompt(self) -> str:
         """Create prompt template for generating responses."""
