@@ -175,7 +175,6 @@ class UpdateProfileRequest(BaseModel):
     experience_years: Optional[int] = None
     languages: Optional[List[str]] = None
     consultation_type: Optional[str] = None
-    timezone: Optional[str] = None
 
 
 class ChangePasswordRequest(BaseModel):

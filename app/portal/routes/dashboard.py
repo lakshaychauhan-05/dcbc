@@ -445,7 +445,7 @@ def reschedule_appointment(
     old_event_id = appointment.google_calendar_event_id
 
     # Calculate UTC times
-    appointment_tz = doctor.timezone if doctor else settings.DEFAULT_TIMEZONE
+    appointment_tz = settings.DEFAULT_TIMEZONE  # Always IST (Asia/Kolkata) for all doctors
     start_at_utc = to_utc(payload.new_date, payload.new_start_time, appointment_tz)
     end_at_utc = to_utc(payload.new_date, payload.new_end_time, appointment_tz)
 
@@ -725,8 +725,6 @@ def update_profile(
         doctor.languages = payload.languages
     if payload.consultation_type is not None:
         doctor.consultation_type = payload.consultation_type
-    if payload.timezone is not None:
-        doctor.timezone = payload.timezone
 
     doctor.updated_at = datetime.now(timezone.utc)
     db.commit()

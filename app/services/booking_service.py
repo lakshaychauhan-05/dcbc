@@ -89,7 +89,7 @@ class BookingService:
         end_datetime = start_datetime + timedelta(minutes=doctor.slot_duration_minutes)
         slot_end_time = end_datetime.time()
 
-        appointment_tz = doctor.timezone or settings.DEFAULT_TIMEZONE
+        appointment_tz = settings.DEFAULT_TIMEZONE  # Always IST (Asia/Kolkata) for all doctors
         start_at_utc = to_utc(booking_data.date, booking_data.start_time, appointment_tz)
         end_at_utc = to_utc(booking_data.date, slot_end_time, appointment_tz)
 
@@ -294,7 +294,7 @@ class BookingService:
         old_event_id = appointment.google_calendar_event_id
         old_date = appointment.date
         old_start_time = appointment.start_time
-        appointment_tz = doctor.timezone or settings.DEFAULT_TIMEZONE
+        appointment_tz = settings.DEFAULT_TIMEZONE  # Always IST (Asia/Kolkata) for all doctors
         start_at_utc = to_utc(reschedule_data.new_date, reschedule_data.new_start_time, appointment_tz)
         end_at_utc = to_utc(reschedule_data.new_date, reschedule_data.new_end_time, appointment_tz)
         
