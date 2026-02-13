@@ -72,6 +72,22 @@ function Start-ServiceProcess {
 # Python command (use venv)
 $python = Join-Path $BaseDir "venv\Scripts\python.exe"
 
+# ── Run database migrations before starting ──────────────────────────
+Write-Host "Running database migrations..." -ForegroundColor Yellow
+$alembicExe = Join-Path $BaseDir "venv\Scripts\alembic.exe"
+try {
+    if (Test-Path $alembicExe) {
+        & $alembicExe upgrade head
+    } else {
+        & $python -m alembic upgrade head
+    }
+    Write-Host "[OK] Migrations up to date" -ForegroundColor Green
+} catch {
+    Write-Host "[WARNING] Migration check failed: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "  App will still start - check DB manually if issues occur." -ForegroundColor DarkGray
+}
+Write-Host ""
+
 # Define services
 $services = @(
     @{
