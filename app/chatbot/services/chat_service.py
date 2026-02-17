@@ -512,11 +512,25 @@ class ChatService:
         ):
             booking_context["doctor_email"] = context.get("last_doctor_email")
             booking_context["selected_doctor_email"] = context.get("last_doctor_email")
+            # Persist immediately so doctor is not lost across subsequent turns
+            # (e.g. user says "book with naveen" then later gives name+phone — naveen stays locked)
+            self.conversation_manager.update_conversation(
+                conversation_id=conversation_id,
+                context={
+                    "doctor_email": context.get("last_doctor_email"),
+                    "selected_doctor_email": context.get("last_doctor_email"),
+                    "doctor_name": booking_context.get("doctor_name"),
+                }
+            )
         if not booking_context.get("specialization"):
             for key in ("last_specialization", "availability_specialization"):
                 if context.get(key):
                     booking_context["specialization"] = context.get(key)
                     break
+
+        # Carry availability_date into booking date so the user doesn't have to repeat it
+        if not booking_context.get("date") and context.get("availability_date"):
+            booking_context["date"] = context.get("availability_date")
 
         if not booking_context.get("doctor_name"):
             resolved_doctor = self._resolve_doctor_from_context(message, context, doctor_data)
@@ -937,6 +951,11 @@ class ChatService:
             # Try to extract date from message more intelligently
             requested_date = self._extract_date_from_message(message)
 
+        # Fall back to previously stored availability date from context (e.g. user gave date
+        # one turn before giving the specialization — no need to ask again)
+        if not requested_date:
+            requested_date = context.get("availability_date")
+
         date_obj = self._parse_date(requested_date)
         update_context = {}
         if specialization:
@@ -1255,31 +1274,46 @@ class ChatService:
             return "What details would you like to provide?"
 
         # Group related fields for natural conversation flow
+        missing_set = set(missing_info)
+        core_fields = {"the doctor or specialization", "the appointment date", "the appointment time"}
+        contact_fields = {"your name", "your phone number"}
+
+        # Fix 5 (UX): When all core booking fields (doctor, date, time) are missing, ask for
+        # them all at once rather than one at a time — avoids a long back-and-forth
+        if core_fields.issubset(missing_set):
+            return (
+                "I'd be happy to help you book. Could you please share the doctor or specialty, "
+                "preferred date, and time all at once?"
+            )
+
         if len(missing_info) >= 2:
-            # Ask for name and phone together
+            # Fix 3: Only ask for name and phone together when they are the LAST remaining
+            # fields — don't skip date/doctor/time just because name+phone are also missing
             if "your name" in missing_info and "your phone number" in missing_info:
-                doctor_text = ""
-                if booking_context.get("doctor_name"):
-                    doctor_text = f" with {self._format_doctor_name(booking_context.get('doctor_name'))}"
-                elif booking_context.get("specialization"):
-                    doctor_text = f" for {booking_context.get('specialization')}"
-                    
-                date_time_text = ""
-                if booking_context.get("date") and booking_context.get("time"):
-                    date_time_text = f" on {booking_context.get('date')} at {booking_context.get('time')}"
-                elif booking_context.get("date"):
-                    date_time_text = f" on {booking_context.get('date')}"
-                    
-                return f"Great! I just need your name and phone number to book the appointment{doctor_text}{date_time_text}."
-            
-            # Ask for date and time together
+                name_phone_are_only_missing = missing_set <= contact_fields
+                if name_phone_are_only_missing:
+                    doctor_text = ""
+                    if booking_context.get("doctor_name"):
+                        doctor_text = f" with {self._format_doctor_name(booking_context.get('doctor_name'))}"
+                    elif booking_context.get("specialization"):
+                        doctor_text = f" for {booking_context.get('specialization')}"
+
+                    date_time_text = ""
+                    if booking_context.get("date") and booking_context.get("time"):
+                        date_time_text = f" on {booking_context.get('date')} at {booking_context.get('time')}"
+                    elif booking_context.get("date"):
+                        date_time_text = f" on {booking_context.get('date')}"
+
+                    return f"Great! I just need your name and phone number to book the appointment{doctor_text}{date_time_text}."
+
+            # Ask for date and time together when those are the remaining core fields
             if "the appointment date" in missing_info and "the appointment time" in missing_info:
                 doctor_text = ""
                 if booking_context.get("doctor_name"):
                     doctor_text = f" with {self._format_doctor_name(booking_context.get('doctor_name'))}"
                 elif booking_context.get("specialization"):
                     doctor_text = f" for {booking_context.get('specialization')}"
-                    
+
                 return f"What date and time would work for you{doctor_text}?"
 
         # Single field prompts
