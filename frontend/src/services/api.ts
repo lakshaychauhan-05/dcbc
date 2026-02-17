@@ -96,9 +96,12 @@ export const chatService = {
   },
 };
 
-// Helper function for normalizing responses
+// Helper function for normalizing responses.
+// Admin /doctors returns a plain array; other endpoints may wrap in { doctors: [...] }.
 export function normalizeDoctorsResponse(data: unknown): unknown[] {
-  if (data == null || typeof data !== 'object') return [];
+  if (data == null) return [];
+  if (Array.isArray(data)) return data;
+  if (typeof data !== 'object') return [];
   const d = data as Record<string, unknown>;
   const arr = d.doctors ?? (d.data as Record<string, unknown>)?.doctors;
   return Array.isArray(arr) ? arr : [];

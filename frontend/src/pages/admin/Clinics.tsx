@@ -7,6 +7,9 @@ const Clinics = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingClinic, setEditingClinic] = useState<Clinic | null>(null);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     address: '',
@@ -14,12 +17,19 @@ const Clinics = () => {
     email: '',
   });
 
+  const showMessage = (msg: string, isError = false) => {
+    if (isError) { setError(msg); setSuccess(''); }
+    else { setSuccess(msg); setError(''); }
+    setTimeout(() => { setError(''); setSuccess(''); }, 4000);
+  };
+
   const fetchClinics = async () => {
     try {
       const response = await adminApi.get('/clinics');
       setClinics(response.data.clinics || response.data || []);
-    } catch (error) {
-      console.error('Failed to fetch clinics:', error);
+    } catch (err) {
+      console.error('Failed to fetch clinics:', err);
+      showMessage('Failed to load clinics. Please refresh.', true);
     } finally {
       setLoading(false);
     }
@@ -31,18 +41,24 @@ const Clinics = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setActionLoading(true);
     try {
       if (editingClinic) {
         await adminApi.put(`/clinics/${editingClinic.id}`, formData);
+        showMessage('Clinic updated successfully.');
       } else {
         await adminApi.post('/clinics', formData);
+        showMessage('Clinic created successfully.');
       }
       setShowModal(false);
       setEditingClinic(null);
       setFormData({ name: '', address: '', phone_number: '', email: '' });
       fetchClinics();
-    } catch (error) {
-      console.error('Failed to save clinic:', error);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      showMessage(e.response?.data?.detail || 'Failed to save clinic.', true);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -61,9 +77,11 @@ const Clinics = () => {
     if (!confirm('Are you sure you want to delete this clinic?')) return;
     try {
       await adminApi.delete(`/clinics/${id}`);
+      showMessage('Clinic deleted.');
       fetchClinics();
-    } catch (error) {
-      console.error('Failed to delete clinic:', error);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      showMessage(e.response?.data?.detail || 'Failed to delete clinic.', true);
     }
   };
 
@@ -93,6 +111,17 @@ const Clinics = () => {
           Add Clinic
         </button>
       </div>
+
+      {error && (
+        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
+          {success}
+        </div>
+      )}
 
       <div className="card">
         <div className="table-container">
@@ -203,11 +232,11 @@ const Clinics = () => {
                 </div>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={actionLoading}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  {editingClinic ? 'Update' : 'Create'}
+                <button type="submit" className="btn btn-primary" disabled={actionLoading}>
+                  {actionLoading ? 'Saving...' : editingClinic ? 'Update' : 'Create'}
                 </button>
               </div>
             </form>

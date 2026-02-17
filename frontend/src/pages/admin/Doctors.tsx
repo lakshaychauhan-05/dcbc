@@ -8,6 +8,9 @@ const Doctors = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     name: '',
@@ -15,9 +18,16 @@ const Doctors = () => {
     specialization: '',
     experience_years: 0,
     languages: '',
-    consultation_type: 'in-person',
+    consultation_type: 'in_person',
     clinic_id: '',
+    initial_password: '',
   });
+
+  const showMessage = (msg: string, isError = false) => {
+    if (isError) { setError(msg); setSuccess(''); }
+    else { setSuccess(msg); setError(''); }
+    setTimeout(() => { setError(''); setSuccess(''); }, 4000);
+  };
 
   const fetchData = async () => {
     try {
@@ -27,37 +37,51 @@ const Doctors = () => {
       ]);
       setDoctors(normalizeDoctorsResponse(doctorsRes.data) as Doctor[]);
       setClinics(clinicsRes.data.clinics || clinicsRes.data || []);
-    } catch (error) {
-      console.error('Failed to fetch data:', error);
+    } catch (err) {
+      console.error('Failed to fetch data:', err);
+      showMessage('Failed to load data. Please refresh.', true);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setActionLoading(true);
+    setError('');
     try {
-      const payload = {
-        ...formData,
-        languages: formData.languages.split(',').map(l => l.trim()).filter(Boolean),
+      const payload: Record<string, unknown> = {
+        email: formData.email,
+        name: formData.name,
+        phone_number: formData.phone_number || undefined,
+        specialization: formData.specialization,
+        experience_years: formData.experience_years,
+        languages: formData.languages.split(',').map((l) => l.trim()).filter(Boolean),
+        consultation_type: formData.consultation_type,
         clinic_id: formData.clinic_id || undefined,
       };
 
       if (editingDoctor) {
         await adminApi.put(`/doctors/${editingDoctor.email}`, payload);
+        showMessage('Doctor updated successfully.');
       } else {
+        if (formData.initial_password) {
+          payload.initial_password = formData.initial_password;
+        }
         await adminApi.post('/doctors', payload);
+        showMessage('Doctor created successfully.');
       }
       setShowModal(false);
       setEditingDoctor(null);
       resetForm();
       fetchData();
-    } catch (error) {
-      console.error('Failed to save doctor:', error);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      showMessage(e.response?.data?.detail || 'Failed to save doctor.', true);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -69,8 +93,9 @@ const Doctors = () => {
       specialization: '',
       experience_years: 0,
       languages: '',
-      consultation_type: 'in-person',
+      consultation_type: 'in_person',
       clinic_id: '',
+      initial_password: '',
     });
   };
 
@@ -85,31 +110,39 @@ const Doctors = () => {
       languages: doctor.languages?.join(', ') || '',
       consultation_type: doctor.consultation_type,
       clinic_id: doctor.clinic_id || '',
+      initial_password: '',
     });
     setShowModal(true);
   };
 
   const handleDelete = async (email: string) => {
-    if (!confirm('Are you sure you want to delete this doctor?')) return;
+    if (!confirm(`Deactivate doctor ${email}? They will be marked inactive.`)) return;
     try {
       await adminApi.delete(`/doctors/${email}`);
+      showMessage('Doctor deactivated.');
       fetchData();
-    } catch (error) {
-      console.error('Failed to delete doctor:', error);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      showMessage(e.response?.data?.detail || 'Failed to deactivate doctor.', true);
     }
   };
 
   const handleCreatePortalAccount = async (email: string) => {
-    const password = prompt('Enter initial password for the portal account:');
-    if (!password) return;
-
+    const password = prompt('Enter initial password for the portal account (leave blank to auto-generate):');
+    if (password === null) return; // user cancelled
     try {
-      await adminApi.post(`/doctors/${email}/portal-account`, { password });
+      const body = password ? { password } : {};
+      const res = await adminApi.post(`/doctors/${email}/portal-account`, body);
+      const generated: string = res.data?.password;
+      if (generated && generated !== password) {
+        alert(`Portal account created.\nGenerated password: ${generated}\nPlease save this — it cannot be recovered.`);
+      } else {
+        showMessage('Portal account created successfully.');
+      }
       fetchData();
-      alert('Portal account created successfully');
-    } catch (error) {
-      console.error('Failed to create portal account:', error);
-      alert('Failed to create portal account');
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      showMessage(e.response?.data?.detail || 'Failed to create portal account.', true);
     }
   };
 
@@ -130,15 +163,22 @@ const Doctors = () => {
         </div>
         <button
           className="btn btn-primary"
-          onClick={() => {
-            setEditingDoctor(null);
-            resetForm();
-            setShowModal(true);
-          }}
+          onClick={() => { setEditingDoctor(null); resetForm(); setShowModal(true); }}
         >
           Add Doctor
         </button>
       </div>
+
+      {error && (
+        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
+          {success}
+        </div>
+      )}
 
       <div className="card">
         <div className="table-container">
@@ -150,6 +190,7 @@ const Doctors = () => {
                 <th>Specialization</th>
                 <th>Experience</th>
                 <th>Clinic</th>
+                <th>Status</th>
                 <th>Portal</th>
                 <th>Actions</th>
               </tr>
@@ -157,7 +198,7 @@ const Doctors = () => {
             <tbody>
               {doctors.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-8 text-slate-500">
+                  <td colSpan={8} className="text-center py-8 text-slate-500">
                     No doctors found
                   </td>
                 </tr>
@@ -170,8 +211,17 @@ const Doctors = () => {
                     <td>{doctor.experience_years} yrs</td>
                     <td>{doctor.clinic_name || '-'}</td>
                     <td>
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        doctor.is_active
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-red-100 text-red-700'
+                      }`}>
+                        {doctor.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td>
                       {doctor.has_portal_account ? (
-                        <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">
+                        <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-700">
                           Active
                         </span>
                       ) : (
@@ -190,12 +240,14 @@ const Doctors = () => {
                       >
                         Edit
                       </button>
-                      <button
-                        className="btn btn-danger"
-                        onClick={() => handleDelete(doctor.email)}
-                      >
-                        Delete
-                      </button>
+                      {doctor.is_active && (
+                        <button
+                          className="btn btn-danger"
+                          onClick={() => handleDelete(doctor.email)}
+                        >
+                          Deactivate
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -284,7 +336,7 @@ const Doctors = () => {
                     value={formData.consultation_type}
                     onChange={(e) => setFormData({ ...formData, consultation_type: e.target.value })}
                   >
-                    <option value="in-person">In-Person</option>
+                    <option value="in_person">In-Person</option>
                     <option value="online">Online</option>
                     <option value="both">Both</option>
                   </select>
@@ -304,13 +356,30 @@ const Doctors = () => {
                     ))}
                   </select>
                 </div>
+                {!editingDoctor && (
+                  <div className="form-group">
+                    <label className="form-label">Initial Portal Password (optional)</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      value={formData.initial_password}
+                      onChange={(e) => setFormData({ ...formData, initial_password: e.target.value })}
+                      placeholder="Leave blank to skip portal account creation"
+                    />
+                  </div>
+                )}
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowModal(false)}
+                  disabled={actionLoading}
+                >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  {editingDoctor ? 'Update' : 'Create'}
+                <button type="submit" className="btn btn-primary" disabled={actionLoading}>
+                  {actionLoading ? 'Saving...' : editingDoctor ? 'Update' : 'Create'}
                 </button>
               </div>
             </form>

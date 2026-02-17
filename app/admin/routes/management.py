@@ -112,6 +112,10 @@ class DoctorResponse(BaseModel):
         from_attributes = True
 
 
+class PortalAccountCreate(BaseModel):
+    password: Optional[str] = None
+
+
 class PortalAccountResponse(BaseModel):
     password: str
     portal_response: Dict[str, Any]
@@ -498,11 +502,12 @@ def delete_doctor(doctor_email: str, db: Session = Depends(get_db)):
 
 
 @router.post("/doctors/{doctor_email}/portal-account", response_model=PortalAccountResponse, status_code=status.HTTP_201_CREATED)
-def provision_portal_account(doctor_email: str, password: Optional[str] = None, db: Session = Depends(get_db)):
+def provision_portal_account(doctor_email: str, payload: PortalAccountCreate = None, db: Session = Depends(get_db)):
     """
     Provision a doctor portal account.
-    If password not provided, generate a secure random one and return it to the caller.
+    If password not provided in the request body, generate a secure random one and return it to the caller.
     """
+    password = payload.password if payload else None
     # Verify doctor exists
     doctor = db.query(Doctor).filter(Doctor.email == doctor_email.lower()).first()
     if not doctor:
