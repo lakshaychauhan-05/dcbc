@@ -120,14 +120,17 @@ class BookingService:
             db.add(patient)
             db.flush()  # Get patient ID
         else:
-            # Update existing patient info if provided
-            if booking_data.patient_name:
+            # Patient already exists — only fill in fields that are currently blank/null.
+            # Never overwrite existing values: patient.name is the single source of truth
+            # tied to this mobile number, and overwriting it would retroactively change the
+            # displayed name on every historical appointment linked to this patient_id.
+            if booking_data.patient_name and not patient.name:
                 patient.name = booking_data.patient_name
-            if booking_data.patient_email:
+            if booking_data.patient_email and not patient.email:
                 patient.email = booking_data.patient_email
-            if booking_data.patient_gender:
+            if booking_data.patient_gender and not patient.gender:
                 patient.gender = booking_data.patient_gender
-            if booking_data.patient_date_of_birth:
+            if booking_data.patient_date_of_birth and not patient.date_of_birth:
                 patient.date_of_birth = booking_data.patient_date_of_birth
         
         # Save patient history if provided
