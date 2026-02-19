@@ -650,9 +650,15 @@ class ChatService:
 
         # Fallback: try to extract date/time directly from message text if not found in entities
         if not reschedule_context.get("reschedule_date"):
-            fallback_date = self._extract_date_from_text(message)
-            if fallback_date:
-                reschedule_context["reschedule_date"] = fallback_date
+            # Handle "same day" / "same date" → reuse the existing appointment's date
+            if re.search(r'\bsame\s+day\b|\bsame\s+date\b|\bsame\b', message, re.IGNORECASE):
+                same_day_date = existing_context.get("last_booking_date") or existing_context.get("availability_date")
+                if same_day_date:
+                    reschedule_context["reschedule_date"] = same_day_date
+            if not reschedule_context.get("reschedule_date"):
+                fallback_date = self._extract_date_from_text(message)
+                if fallback_date:
+                    reschedule_context["reschedule_date"] = fallback_date
 
         if not reschedule_context.get("reschedule_time"):
             fallback_time = self._extract_time_from_text(message)
@@ -1693,7 +1699,13 @@ class ChatService:
 
     def _extract_time_from_text(self, message: str) -> Optional[str]:
         """Extract time text using heuristics."""
-        if not re.search(r"\b\d{1,2}(:\d{2})?\s*(am|pm)\b|\b\d{1,2}:\d{2}\b", message, re.IGNORECASE):
+        has_time = re.search(
+            r"\b\d{1,2}(:\d{2})?\s*(am|pm)\b"           # "2pm", "2:30 pm"
+            r"|\b\d{1,2}:\d{2}\b"                          # "14:00", "2:30"
+            r"|\b\d{1,2}\s+(?:in\s+the\s+|at\s+)?(?:morning|afternoon|evening|night)\b",  # "2 in the afternoon"
+            message, re.IGNORECASE
+        )
+        if not has_time:
             return None
         time_obj = self._parse_time(message)
         return time_obj.isoformat() if time_obj else None
@@ -2899,18 +2911,33 @@ class ChatService:
         try:
             normalized = value.lower().strip()
 
+            # Handle "X in the morning/afternoon/evening" e.g. "2 in the afternoon" → 14:00
+            period_match = re.search(
+                r'\b(\d{1,2})\s*(?:in\s+the\s+|at\s+)?(morning|afternoon|evening|night)\b',
+                normalized
+            )
+            if period_match:
+                hour = int(period_match.group(1))
+                period = period_match.group(2)
+                if period in ("afternoon", "evening", "night") and hour < 12:
+                    hour += 12
+                elif period == "morning" and hour == 12:
+                    hour = 0
+                if 0 <= hour <= 23:
+                    return dt_time(hour, 0)
+
             # Handle common time-of-day references
             time_mappings = {
-                "morning": dt_time(9, 0),
                 "early morning": dt_time(7, 0),
                 "late morning": dt_time(11, 0),
+                "morning": dt_time(9, 0),
                 "noon": dt_time(12, 0),
-                "afternoon": dt_time(14, 0),
                 "early afternoon": dt_time(13, 0),
                 "late afternoon": dt_time(16, 0),
-                "evening": dt_time(18, 0),
+                "afternoon": dt_time(14, 0),
                 "early evening": dt_time(17, 0),
                 "late evening": dt_time(20, 0),
+                "evening": dt_time(18, 0),
                 "night": dt_time(20, 0),
             }
 
@@ -3092,6 +3119,9 @@ class ChatService:
                     # Keep doctor info for reschedule context
                     "last_doctor_name": booking_context.get("doctor_name"),
                     "last_doctor_email": booking_context.get("doctor_email"),
+                    # Keep booking date/time so reschedule can use "same day" reference
+                    "last_booking_date": booking_context.get("date"),
+                    "last_booking_time": booking_context.get("time"),
                     # Clear other booking-specific context
                     "selected_doctor_email": None,
                     "date": None,

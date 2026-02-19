@@ -188,13 +188,18 @@ class BookingService:
             calendar_sync_queue.trigger_immediate_sync(apt_id_str, "CREATE")
             db.refresh(appointment)  # Reload to get updated google_calendar_event_id and sync status
 
+            # Use the name provided at booking time for notifications.
+            # patient.name may belong to a prior booking under the same phone number,
+            # so we prefer booking_data.patient_name to keep this booking's context correct.
+            notification_patient_name = booking_data.patient_name or patient.name
+
             # Send SMS notifications to both doctor and patient (non-blocking)
             try:
                 # Doctor SMS notification
                 notification_service.send_doctor_booking_sms(
                     doctor_phone=doctor.phone_number,
                     doctor_name=doctor.name,
-                    patient_name=patient.name,
+                    patient_name=notification_patient_name,
                     patient_mobile=patient.mobile_number,
                     appointment_date=appointment.date,
                     appointment_time=appointment.start_time,
@@ -203,7 +208,7 @@ class BookingService:
                 # Patient SMS notification (respects sms_opt_in preference)
                 notification_service.send_patient_booking_sms(
                     patient_mobile=patient.mobile_number,
-                    patient_name=patient.name,
+                    patient_name=notification_patient_name,
                     doctor_name=doctor.name,
                     doctor_specialization=doctor.specialization,
                     appointment_date=appointment.date,

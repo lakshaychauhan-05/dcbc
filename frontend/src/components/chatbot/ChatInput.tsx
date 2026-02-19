@@ -34,7 +34,7 @@ const ChatInput = ({ onSendMessage, disabled }: ChatInputProps) => {
             placeholder="Type your message..."
             disabled={disabled}
             rows={1}
-            className="w-full px-4 py-3 pr-12 rounded-xl border border-slate-200 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 outline-none transition-all duration-200 resize-none text-sm placeholder-slate-400 disabled:bg-slate-50 disabled:text-slate-400"
+            className="w-full px-4 py-3 pr-12 rounded-xl border border-slate-200 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 outline-none transition-all duration-200 resize-none text-sm text-slate-800 placeholder-slate-400 disabled:bg-slate-50 disabled:text-slate-400"
             style={{ minHeight: '48px', maxHeight: '120px' }}
           />
         </div>
