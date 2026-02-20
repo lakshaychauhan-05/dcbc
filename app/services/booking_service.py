@@ -181,17 +181,42 @@ class BookingService:
             db.add(appointment)
             db.commit()
             db.refresh(appointment)
-            
-            # Queue calendar sync and run immediately so calendar updates before response
-            apt_id_str = str(appointment.id)
-            calendar_sync_queue.enqueue_create(apt_id_str)
-            calendar_sync_queue.trigger_immediate_sync(apt_id_str, "CREATE")
-            db.refresh(appointment)  # Reload to get updated google_calendar_event_id and sync status
 
-            # Use the name provided at booking time for notifications.
+            # Use the name provided at booking time for notifications AND calendar.
             # patient.name may belong to a prior booking under the same phone number,
             # so we prefer booking_data.patient_name to keep this booking's context correct.
             notification_patient_name = booking_data.patient_name or patient.name
+
+            # Create Google Calendar event directly (not via background queue) so the
+            # event shows the correct patient name from this booking session.
+            apt_id_str = str(appointment.id)
+            try:
+                cal = GoogleCalendarService()
+                event_id = cal.create_event(
+                    doctor_email=appointment.doctor_email,
+                    patient_name=notification_patient_name,
+                    appointment_date=appointment.date,
+                    start_time=appointment.start_time,
+                    end_time=appointment.end_time,
+                    description=f"Appointment with {notification_patient_name}",
+                    timezone_name=appointment.timezone,
+                )
+                if event_id:
+                    appointment.google_calendar_event_id = event_id
+                    appointment.calendar_sync_status = "SYNCED"
+                    appointment.calendar_sync_last_error = None
+                    db.commit()
+                else:
+                    # Sync failed, queue for background retry
+                    appointment.calendar_sync_status = "PENDING"
+                    db.commit()
+                    calendar_sync_queue.enqueue_create(apt_id_str)
+            except Exception as e:
+                logger.warning(f"Calendar sync failed for appointment {apt_id_str}, queueing for retry: {e}")
+                appointment.calendar_sync_status = "PENDING"
+                appointment.calendar_sync_last_error = str(e)[:500]
+                db.commit()
+                calendar_sync_queue.enqueue_create(apt_id_str)
 
             # Send SMS notifications to both doctor and patient (non-blocking)
             try:
