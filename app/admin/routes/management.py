@@ -20,6 +20,7 @@ from app.models.doctor_account import DoctorAccount
 from app.models.patient import Patient
 from app.models.appointment import Appointment
 from app.portal.security import get_password_hash
+from app.utils.cache_utils import invalidate_doctor_cache
 
 logger = logging.getLogger(__name__)
 
@@ -373,6 +374,9 @@ def create_doctor(payload: DoctorCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(doctor)
 
+    # Invalidate doctor cache so chatbot gets updated data
+    invalidate_doctor_cache()
+
     # Eager load clinic to avoid N+1 query in response
     # The clinic is already validated above, so we can use it directly
     doctor.clinic = clinic
@@ -462,6 +466,9 @@ def update_doctor(doctor_email: str, payload: DoctorUpdate, db: Session = Depend
     db.commit()
     db.refresh(doctor)
 
+    # Invalidate doctor cache so chatbot gets updated data
+    invalidate_doctor_cache()
+
     # Check if portal account exists
     has_portal = db.query(DoctorAccount).filter(
         DoctorAccount.doctor_email == doctor_email.lower()
@@ -498,6 +505,10 @@ def delete_doctor(doctor_email: str, db: Session = Depends(get_db)):
     doctor.is_active = False
     doctor.updated_at = datetime.now(timezone.utc)
     db.commit()
+
+    # Invalidate doctor cache so chatbot gets updated data
+    invalidate_doctor_cache()
+
     return None
 
 
