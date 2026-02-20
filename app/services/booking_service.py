@@ -81,8 +81,16 @@ class BookingService:
                 raise ValueError("Doctor name does not match the selected doctor")
 
         # Prevent booking in the past (using IST timezone)
-        if booking_data.date < now_ist().date():
+        current_ist = now_ist()
+        current_date = current_ist.date()
+        current_time = current_ist.time()
+
+        if booking_data.date < current_date:
             raise ValueError("Appointment date cannot be in the past")
+
+        # Prevent booking past time slots on current date
+        if booking_data.date == current_date and booking_data.start_time <= current_time:
+            raise ValueError("Appointment time has already passed. Please select a future time slot.")
 
         # Calculate slot end time based on doctor's slot duration
         start_datetime = datetime.combine(booking_data.date, booking_data.start_time)

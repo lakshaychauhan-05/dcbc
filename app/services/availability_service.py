@@ -11,6 +11,7 @@ from app.models.doctor import Doctor
 from app.models.appointment import Appointment, AppointmentStatus
 from app.models.doctor_leave import DoctorLeave
 from app.schemas.appointment import AvailabilitySlot, AvailabilityResponse
+from app.utils.datetime_utils import now_ist
 from collections import defaultdict
 
 
@@ -100,16 +101,26 @@ class AvailabilityService:
         for apt in booked_appointments:
             booked_ranges.add((apt.start_time, apt.end_time))
         
-        # Filter out booked slots
+        # Get current time for filtering past slots on current date
+        current_ist = now_ist()
+        current_date = current_ist.date()
+        current_time = current_ist.time()
+        is_today = target_date == current_date
+
+        # Filter out booked slots and past time slots
         available_slots = []
         for slot in all_slots:
+            # Skip past time slots on current date
+            if is_today and slot.start_time <= current_time:
+                continue
+
             is_booked = False
             for booked_start, booked_end in booked_ranges:
                 # Check if slot overlaps with booked appointment
                 if not (slot.end_time <= booked_start or slot.start_time >= booked_end):
                     is_booked = True
                     break
-            
+
             if not is_booked:
                 available_slots.append(slot)
         
@@ -132,6 +143,12 @@ class AvailabilityService:
         """
         if not doctors:
             return {}
+
+        # Get current time for filtering past slots on current date
+        current_ist = now_ist()
+        current_date = current_ist.date()
+        current_time = current_ist.time()
+        is_today = target_date == current_date
 
         doctor_emails = [doctor.email for doctor in doctors]
 
@@ -187,6 +204,10 @@ class AvailabilityService:
             booked_ranges = booked_by_doctor.get(doctor.email, [])
             available_slots = []
             for slot in all_slots:
+                # Skip past time slots on current date
+                if is_today and slot.start_time <= current_time:
+                    continue
+
                 is_booked = False
                 for booked_start, booked_end in booked_ranges:
                     if not (slot.end_time <= booked_start or slot.start_time >= booked_end):
