@@ -163,10 +163,11 @@ class BookingService:
             if existing_appointment:
                 raise ValueError("Slot has been booked by another request")
 
-            # Create appointment
+            # Create appointment - store the booking-provided patient name for display
             appointment = Appointment(
                 doctor_email=booking_data.doctor_email,  # Changed to email
                 patient_id=patient.id,
+                patient_display_name=booking_data.patient_name or patient.name,
                 date=booking_data.date,
                 start_time=booking_data.start_time,
                 end_time=slot_end_time,
@@ -182,11 +183,6 @@ class BookingService:
             db.commit()
             db.refresh(appointment)
 
-            # Use the name provided at booking time for notifications AND calendar.
-            # patient.name may belong to a prior booking under the same phone number,
-            # so we prefer booking_data.patient_name to keep this booking's context correct.
-            notification_patient_name = booking_data.patient_name or patient.name
-
             # Create Google Calendar event directly (not via background queue) so the
             # event shows the correct patient name from this booking session.
             apt_id_str = str(appointment.id)
@@ -194,11 +190,11 @@ class BookingService:
                 cal = GoogleCalendarService()
                 event_id = cal.create_event(
                     doctor_email=appointment.doctor_email,
-                    patient_name=notification_patient_name,
+                    patient_name=appointment.patient_display_name,
                     appointment_date=appointment.date,
                     start_time=appointment.start_time,
                     end_time=appointment.end_time,
-                    description=f"Appointment with {notification_patient_name}",
+                    description=f"Appointment with {appointment.patient_display_name}",
                     timezone_name=appointment.timezone,
                 )
                 if event_id:
@@ -224,7 +220,7 @@ class BookingService:
                 notification_service.send_doctor_booking_sms(
                     doctor_phone=doctor.phone_number,
                     doctor_name=doctor.name,
-                    patient_name=notification_patient_name,
+                    patient_name=appointment.patient_display_name,
                     patient_mobile=patient.mobile_number,
                     appointment_date=appointment.date,
                     appointment_time=appointment.start_time,
@@ -233,7 +229,7 @@ class BookingService:
                 # Patient SMS notification (respects sms_opt_in preference)
                 notification_service.send_patient_booking_sms(
                     patient_mobile=patient.mobile_number,
-                    patient_name=notification_patient_name,
+                    patient_name=appointment.patient_display_name,
                     doctor_name=doctor.name,
                     doctor_specialization=doctor.specialization,
                     appointment_date=appointment.date,
@@ -354,16 +350,19 @@ class BookingService:
             else:
                 calendar_sync_queue.enqueue_create(apt_id_str)
 
+            # Use display name from appointment (name given at original booking time)
+            display_name = appointment.patient_display_name or patient.name
+
             cal = GoogleCalendarService()
             if old_event_id:
                 result = cal.update_event(
                     doctor_email=appointment.doctor_email,
                     event_id=old_event_id,
-                    patient_name=patient.name,
+                    patient_name=display_name,
                     appointment_date=appointment.date,
                     start_time=appointment.start_time,
                     end_time=appointment.end_time,
-                    description=f"Appointment with {patient.name}",
+                    description=f"Appointment with {display_name}",
                     timezone_name=appointment.timezone,
                 )
                 ok = bool(result)
@@ -373,11 +372,11 @@ class BookingService:
             else:
                 event_id = cal.create_event(
                     doctor_email=appointment.doctor_email,
-                    patient_name=patient.name,
+                    patient_name=display_name,
                     appointment_date=appointment.date,
                     start_time=appointment.start_time,
                     end_time=appointment.end_time,
-                    description=f"Appointment with {patient.name}",
+                    description=f"Appointment with {display_name}",
                     timezone_name=appointment.timezone,
                 )
                 ok = bool(event_id)
@@ -408,7 +407,7 @@ class BookingService:
                 notification_service.send_doctor_reschedule_sms(
                     doctor_phone=doctor.phone_number,
                     doctor_name=doctor.name,
-                    patient_name=patient.name,
+                    patient_name=display_name,
                     patient_mobile=patient.mobile_number,
                     old_date=old_date,
                     old_time=old_start_time,
@@ -418,7 +417,7 @@ class BookingService:
                 # Patient SMS notification
                 notification_service.send_patient_reschedule_sms(
                     patient_mobile=patient.mobile_number,
-                    patient_name=patient.name,
+                    patient_name=display_name,
                     doctor_name=doctor.name,
                     doctor_specialization=doctor.specialization,
                     new_date=reschedule_data.new_date,
@@ -519,12 +518,14 @@ class BookingService:
 
             # Send SMS notifications to both doctor and patient (non-blocking)
             if patient:
+                # Use display name from appointment (name given at booking time)
+                display_name = appointment.patient_display_name or patient.name
                 try:
                     # Doctor SMS notification
                     notification_service.send_doctor_cancellation_sms(
                         doctor_phone=doctor.phone_number,
                         doctor_name=doctor.name,
-                        patient_name=patient.name,
+                        patient_name=display_name,
                         patient_mobile=patient.mobile_number,
                         appointment_date=appointment_date,
                         appointment_time=appointment_time
@@ -532,7 +533,7 @@ class BookingService:
                     # Patient SMS notification
                     notification_service.send_patient_cancellation_sms(
                         patient_mobile=patient.mobile_number,
-                        patient_name=patient.name,
+                        patient_name=display_name,
                         doctor_name=doctor.name,
                         appointment_date=appointment_date,
                         appointment_time=appointment_time,

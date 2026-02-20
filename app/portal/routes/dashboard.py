@@ -50,6 +50,8 @@ def get_me(account=Depends(get_current_doctor_account)) -> DoctorProfile:
 
 
 def _appointment_to_item(appt: Appointment, patient: Patient) -> AppointmentItem:
+    # Use display name from appointment (name given at booking time) if available
+    display_name = appt.patient_display_name or patient.name
     return AppointmentItem(
         id=str(appt.id),
         date=appt.date,
@@ -59,7 +61,7 @@ def _appointment_to_item(appt: Appointment, patient: Patient) -> AppointmentItem
         timezone=appt.timezone,
         patient=PatientSummary(
             id=str(patient.id),
-            name=patient.name,
+            name=display_name,
             mobile_number=patient.mobile_number,
             email=patient.email,
             sms_opt_in=patient.sms_opt_in,
@@ -241,10 +243,11 @@ def cancel_appointment(
     patient = db.query(Patient).filter(Patient.id == appointment.patient_id).first()
 
     # Store values for background thread (avoid using ORM objects after session closes)
+    # Use display name from appointment (name given at booking time)
     doctor_email = account.doctor_email
     doctor_phone = doctor.phone_number if doctor else None
     doctor_name = doctor.name if doctor else "Doctor"
-    patient_name = patient.name if patient else "Patient"
+    patient_name = appointment.patient_display_name or (patient.name if patient else "Patient")
     patient_mobile = patient.mobile_number if patient else None
     patient_sms_opt_in = patient.sms_opt_in if patient else True
     appointment_date = appointment.date
@@ -430,12 +433,13 @@ def reschedule_appointment(
     patient = db.query(Patient).filter(Patient.id == appointment.patient_id).first()
 
     # Store values for background thread (avoid using ORM objects after session closes)
+    # Use display name from appointment (name given at booking time)
     doctor_email = account.doctor_email
     doctor_phone = doctor.phone_number if doctor else None
     doctor_name = doctor.name if doctor else "Doctor"
     doctor_specialization = doctor.specialization if doctor else "General"
     clinic_address = doctor.clinic.address if doctor and doctor.clinic else settings.CLINIC_ADDRESS
-    patient_name = patient.name if patient else "Patient"
+    patient_name = appointment.patient_display_name or (patient.name if patient else "Patient")
     patient_mobile = patient.mobile_number if patient else None
     patient_sms_opt_in = patient.sms_opt_in if patient else True
 
