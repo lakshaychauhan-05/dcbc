@@ -888,8 +888,17 @@ class ChatService:
                         f"Would you like to book an appointment?"
                     )
                 else:
-                    doctor_names = [self._format_doctor_name(d.get("name")) for d in matching_doctors[:3]]
-                    return f"For {specialization}, we have: {', '.join(doctor_names)}. Would you like more information about any of them?"
+                    # Show up to 5 doctors, or all if less than 5
+                    display_limit = min(5, len(matching_doctors))
+                    doctor_names = [self._format_doctor_name(d.get("name")) for d in matching_doctors[:display_limit]]
+
+                    # Add "and X more" if there are additional doctors
+                    response = f"For {specialization}, we have: {', '.join(doctor_names)}"
+                    if len(matching_doctors) > display_limit:
+                        remaining = len(matching_doctors) - display_limit
+                        response += f" and {remaining} more"
+                    response += ". Would you like more information about any of them?"
+                    return response
             else:
                 self.conversation_manager.update_conversation(
                     conversation_id=conversation_id,
@@ -1688,8 +1697,13 @@ class ChatService:
 
     def _extract_date_from_text(self, message: str) -> Optional[str]:
         """Extract date text using heuristics."""
+        # Check for date indicators (abbreviated and full month names)
         if not re.search(
-            r"\b(today|tomorrow|next|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\d{1,2}[/-]\d{1,2}|\d{4}-\d{1,2}-\d{1,2})\b",
+            r"\b(today|tomorrow|next|"
+            r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
+            r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+            r"jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|"
+            r"\d{1,2}[/-]\d{1,2}|\d{4}-\d{1,2}-\d{1,2})\b",
             message,
             re.IGNORECASE
         ):
