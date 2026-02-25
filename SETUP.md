@@ -14,6 +14,9 @@ Install the following before proceeding:
 | Node.js | 18 or higher | https://nodejs.org |
 | PostgreSQL | 14 or higher | https://www.postgresql.org/download |
 | Git | Any | https://git-scm.com |
+| Redis (optional) | 7.0 or higher | https://redis.io/download |
+
+> **Note:** Redis is optional. Without it, chatbot conversation state is stored in-memory (works fine for single-server setups). Install Redis if you need persistent sessions across server restarts.
 
 Verify your installations:
 
@@ -169,7 +172,48 @@ INFO  [alembic.runtime.migration] Running upgrade  -> xxxx, initial schema
 INFO  [alembic.runtime.migration] Running upgrade xxxx -> yyyy, ...
 ```
 
-### 3.7 — Start the backend server
+### 3.7 — Seed sample data (recommended)
+
+Populate the database with sample clinics, doctors, patients, and appointments so the platform is immediately usable:
+
+```bash
+python scripts/populate_sample_data.py
+```
+
+Expected output:
+```
+[1/4] Creating clinics...
+  + Created clinic: Legacy Clinic 1
+  + Created clinic: HealthFirst Medical Center
+[2/4] Creating doctors...
+  + Created doctor: Dr. Sarah Smith (Cardiology)
+  + Created doctor: Dr. Michael Johnson (Dermatology)
+  + Created doctor: Dr. Emily Davis (Pediatrics)
+  + Created doctor: Dr. Robert Wilson (Orthopedics)
+  + Created doctor: Dr. Lisa Brown (Gynecology)
+[3/4] Creating patients...
+  + Created patient: Rahul Sharma
+  + Created patient: Priya Patel
+  + Created patient: Amit Kumar
+[4/4] Creating sample appointments...
+  + Created appointment: Rahul Sharma with dr.sarah.smith@clinic.com ...
+  Done! Sample data is ready.
+```
+
+This script is **idempotent** — safe to run multiple times. It skips records that already exist.
+
+**What gets created:**
+
+| Entity | Count | Details |
+|--------|-------|---------|
+| Clinics | 2 | Legacy Clinic 1, HealthFirst Medical Center |
+| Doctors | 5 | Cardiology, Dermatology, Pediatrics, Orthopedics, Gynecology |
+| Patients | 3 | Rahul Sharma, Priya Patel, Amit Kumar |
+| Appointments | 3 | One per doctor (next 3 days) |
+
+> **Skip this step** if you prefer to create clinics and doctors manually through the Admin Portal (see Step 5B).
+
+### 3.8 — Start the backend server
 
 ```bash
 python run.py
@@ -231,25 +275,40 @@ The frontend is now running at **http://localhost:5173**
 
 ---
 
-## Step 5 — Admin Account & First-Time Data
+## Step 5A — Verify Seed Data (if you ran Step 3.7)
 
-### 5.1 — Log in to the Admin Portal
+If you ran the sample data script in Step 3.7, your platform is already operational with 2 clinics, 5 doctors, 3 patients, and sample appointments.
+
+1. Open **http://localhost:5173** — the chatbot should respond to queries like *"I need a cardiology appointment"*
+2. Open **http://localhost:5173/admin/login** — log in with `ADMIN_EMAIL` and the **plain-text password** from Step 3.4
+3. You should see the seeded clinics and doctors in the admin dashboard
+
+> You can add more clinics and doctors via the Admin Portal at any time.
+
+---
+
+## Step 5B — Manual Data Setup (if you skipped Step 3.7)
+
+If you skipped the seed script, create your initial data manually:
+
+### 5B.1 — Log in to the Admin Portal
 
 1. Open **http://localhost:5173/admin/login** in your browser
 2. Enter your `ADMIN_EMAIL` and the **plain-text password** you used in Step 3.4
 3. You will be redirected to the admin dashboard
 
-### 5.2 — Create a clinic
+### 5B.2 — Create a clinic
 
 1. Go to **Admin → Clinics → Add Clinic**
 2. Fill in the clinic name, address, phone, and email
 3. Click **Create**
 
-### 5.3 — Create a doctor
+### 5B.3 — Create a doctor
 
 1. Go to **Admin → Doctors → Add Doctor**
 2. Fill in all doctor details and assign the clinic created above
-3. Click **Create**
+3. Optionally set an initial password to enable doctor portal login
+4. Click **Create**
 
 The chatbot and booking system are now fully operational.
 
@@ -408,3 +467,31 @@ Then restart the frontend (`Ctrl+C`, then `npm run dev` again).
 Verify your API key is valid and has available credits:
 - Check key at: https://platform.openai.com/api-keys
 - Check usage at: https://platform.openai.com/usage
+
+---
+
+### `populate_sample_data.py` fails — database connection error
+
+Make sure the backend `.env` file is configured and migrations have been run **before** running the seed script:
+
+```bash
+# 1. Confirm .env exists with DATABASE_URL set
+cat .env | grep DATABASE_URL
+
+# 2. Run migrations first
+alembic upgrade head
+
+# 3. Then seed data
+python scripts/populate_sample_data.py
+```
+
+---
+
+### Chatbot shows old doctors after adding new ones
+
+The chatbot caches doctor data for performance. When you add a doctor via the Admin Portal, the cache is automatically invalidated. If you add doctors directly to the database, restart the backend to clear the in-memory cache:
+
+```bash
+# Ctrl+C to stop the backend, then:
+python run.py
+```
